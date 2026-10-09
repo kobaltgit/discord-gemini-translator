@@ -1,0 +1,163 @@
+/* Кнопка перевода для входящих сообщений */
+.dgt-translate-msg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 1px 5px;
+  margin-left: 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+  color: #949ba4;
+  opacity: 0.6;
+  user-select: none;
+  transition:
+    opacity 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+  vertical-align: baseline;
+}
+
+.dgt-translate-msg-btn:hover {
+  opacity: 1;
+  background-color: rgba(78, 80, 88, 0.3);
+  color: #5865f2;
+}
+
+.dgt-gemini-icon {
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+  filter: drop-shadow(0 0 4px rgba(116, 155, 255, 0.4));
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s ease;
+}
+
+.dgt-translate-msg-btn:hover .dgt-gemini-icon,
+.dgt-chat-input-btn:hover .dgt-gemini-icon {
+  filter: drop-shadow(0 0 8px rgba(116, 155, 255, 0.85));
+  transform: scale(1.15);
+}
+
+.dgt-chat-input-btn .dgt-gemini-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.dgt-translate-msg-btn.dgt-loading {
+  pointer-events: none;
+  animation: dgt-pulse 1s infinite alternate;
+}
+
+/* Блок отображения перевода под сообщением */
+.dgt-translation-box {
+  margin-top: 6px;
+  padding: 8px 12px;
+  background-color: rgba(43, 45, 49, 0.85);
+  border-left: 3px solid #5865f2;
+  border-radius: 4px;
+  font-size: 0.95em;
+  line-height: 1.4;
+  color: #dbdee1;
+  position: relative;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.dgt-translation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #949ba4;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.dgt-translation-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #5865f2;
+}
+
+.dgt-close-btn {
+  background: transparent;
+  border: none;
+  color: #949ba4;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 2px;
+}
+
+.dgt-close-btn:hover {
+  color: #f23f43;
+  background-color: rgba(242, 63, 67, 0.1);
+}
+
+.dgt-translation-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #f2f3f5;
+}
+
+.dgt-translation-error {
+  color: #f23f43;
+  font-size: 12px;
+}
+
+/* Кнопка перевода поля ввода (исходящие сообщения) */
+.dgt-chat-input-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 4px;
+  color: #b5bac1;
+  font-size: 16px;
+  transition:
+    color 0.15s ease,
+    transform 0.1s ease,
+    background-color 0.15s ease;
+}
+
+.dgt-chat-input-btn:hover {
+  color: #5865f2;
+  background-color: rgba(78, 80, 88, 0.2);
+}
+
+.dgt-chat-input-btn:active {
+  transform: scale(0.92);
+}
+
+.dgt-chat-input-btn.dgt-loading {
+  pointer-events: none;
+  animation: dgt-spin 1s infinite linear;
+}
+
+/* Анимации */
+@keyframes dgt-pulse {
+  0% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes dgt-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}

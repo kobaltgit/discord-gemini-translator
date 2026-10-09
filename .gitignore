@@ -1,0 +1,34 @@
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Packaging & Archives
+*.zip
+*.crx
+*.pem
+
+# Environment & Secrets
+.env
+.env.*
+*.local
+secrets/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Node / Temporary
+node_modules/
+dist/
+build/
+.cache/

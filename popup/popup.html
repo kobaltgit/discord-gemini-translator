@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Discord Gemini Translator</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="popup-container">
+      <header class="header">
+        <div class="header-top">
+          <div class="logo-title">
+            <div class="logo-glow-wrapper">
+              <img src="../icons/google-gemini-icon.svg" class="logo-icon" alt="Gemini" />
+            </div>
+            <h1>Gemini Translator</h1>
+          </div>
+          <div class="lang-switch" role="group" aria-label="Interface Language">
+            <button type="button" class="lang-btn active" data-lang="ru">RU</button>
+            <button type="button" class="lang-btn" data-lang="en">EN</button>
+          </div>
+        </div>
+        <p class="subtitle" data-i18n="subtitle">Двусторонний перевод в Discord</p>
+      </header>
+
+      <main class="main-content">
+        <div class="form-group">
+          <label for="apiKey" data-i18n="apiKeyLabel">API-ключ Google Gemini:</label>
+          <div class="input-with-button">
+            <input
+              type="password"
+              id="apiKey"
+              placeholder="AIzaSy..."
+              autocomplete="off"
+            />
+            <button
+              type="button"
+              id="toggleApiKey"
+              class="secondary-btn icon-btn"
+              title="Показать/скрыть ключ"
+              data-i18n-title="toggleApiKeyTitle"
+            >
+              👁️
+            </button>
+          </div>
+          <button type="button" id="fetchModelsBtn" class="action-btn" data-i18n="fetchModelsBtn">
+            Загрузить список моделей
+          </button>
+        </div>
+
+        <div class="form-group">
+          <label for="modelSelect" data-i18n="modelSelectLabel">Модель Gemini:</label>
+          <select id="modelSelect" disabled>
+            <option value="" data-i18n="modelSelectPlaceholder">Сначала загрузите модели по API-ключу</option>
+          </select>
+        </div>
+
+        <div class="language-grid">
+          <div class="form-group">
+            <label for="incomingLang" data-i18n="incomingLangLabel">Входящие:</label>
+            <select id="incomingLang">
+              <option value="Russian" selected>Русский</option>
+              <option value="English">Английский</option>
+              <option value="German">Немецкий</option>
+              <option value="French">Французский</option>
+              <option value="Spanish">Испанский</option>
+              <option value="Chinese">Китайский</option>
+              <option value="Japanese">Японский</option>
+              <option value="Korean">Корейский</option>
+              <option value="Ukrainian">Украинский</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="outgoingLang" data-i18n="outgoingLangLabel">Исходящие:</label>
+            <select id="outgoingLang">
+              <option value="English" selected>Английский</option>
+              <option value="Russian">Русский</option>
+              <option value="German">Немецкий</option>
+              <option value="French">Французский</option>
+              <option value="Spanish">Испанский</option>
+              <option value="Chinese">Китайский</option>
+              <option value="Japanese">Японский</option>
+              <option value="Korean">Корейский</option>
+              <option value="Ukrainian">Украинский</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="statusMessage" class="status-message"></div>
+
+        <button type="button" id="saveBtn" class="primary-btn" data-i18n="saveBtn">
+          Сохранить настройки
+        </button>
+      </main>
+
+      <footer class="footer">
+        <small data-i18n="footerText">Ключ сохраняется локально в вашем браузере</small>
+      </footer>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
