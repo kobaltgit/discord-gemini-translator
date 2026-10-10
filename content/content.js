@@ -1,6 +1,32 @@
 (() => {
   let incomingLang = "Russian";
   let outgoingLang = "English";
+  let reversePreviewEnabled = true;
+  let autoTranslateEnabled = false;
+  let autoTranslateChannels = {};
+  let lastSeenChannelId = null;
+  const autoTranslateQueue = [];
+  let isQueueProcessing = false;
+
+  const SUPPORTED_LANGUAGES = [
+    { code: "EN", name: "English" },
+    { code: "RU", name: "Russian" },
+    { code: "DE", name: "German" },
+    { code: "FR", name: "French" },
+    { code: "ES", name: "Spanish" },
+    { code: "ZH", name: "Chinese" },
+    { code: "JA", name: "Japanese" },
+    { code: "KO", name: "Korean" },
+    { code: "UK", name: "Ukrainian" },
+  ];
+
+  function getLangCode(langName) {
+    if (!langName) return "EN";
+    const match = SUPPORTED_LANGUAGES.find(
+      (l) => l.name.toLowerCase() === langName.toLowerCase(),
+    );
+    return match ? match.code : langName.slice(0, 2).toUpperCase();
+  }
 
   const GEMINI_ICON_SVG = `
     <svg width="15" height="15" viewBox="0 0 65 65" fill="none" class="dgt-gemini-icon" style="vertical-align: middle; display: inline-block;">
@@ -15,28 +41,214 @@
     </svg>
   `;
 
-  // Загрузка сохраненных настроек языков
-  chrome.storage.local.get(["incomingLang", "outgoingLang"], (items) => {
-    if (items.incomingLang) incomingLang = items.incomingLang;
-    if (items.outgoingLang) outgoingLang = items.outgoingLang;
-  });
+  function getCurrentChannelId(
+    pathname = typeof window !== "undefined" ? window.location?.pathname : "",
+  ) {
+    if (!pathname) return null;
+    const match = pathname.match(/\/channels\/([^\/]+)\/([^\/]+)/);
+    return match ? match[2] : null;
+  }
 
-  // Отслеживание изменений настроек в реальном времени без перезагрузки вкладки
-  chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === "local") {
-      if (changes.incomingLang) incomingLang = changes.incomingLang.newValue;
-      if (changes.outgoingLang) outgoingLang = changes.outgoingLang.newValue;
+  function isAutoTranslateActiveForChannel(
+    channelId,
+    globalEnabled,
+    channelMap,
+  ) {
+    if (globalEnabled) return true;
+    if (!channelId || !channelMap) return false;
+    return Boolean(channelMap[channelId]);
+  }
+
+  function shouldAutoTranslateMessage(
+    contentElement,
+    rawText,
+    isChannelActive,
+  ) {
+    if (!isChannelActive) return false;
+    if (!contentElement || !rawText) return false;
+    if (contentElement.dataset.dgtAutoTranslated === "true") return false;
+    if (
+      contentElement.parentElement?.querySelector(
+        `.dgt-translation-box[data-for="${contentElement.id}"]`,
+      )
+    ) {
+      return false;
     }
-  });
+    if (/^https?:\/\/\S+$/i.test(rawText.trim())) return false;
+    return true;
+  }
+
+  function updateAllAutoButtons() {
+    const currentChId = getCurrentChannelId();
+    const isActive = isAutoTranslateActiveForChannel(
+      currentChId,
+      autoTranslateEnabled,
+      autoTranslateChannels,
+    );
+    document.querySelectorAll(".dgt-auto-btn").forEach((btn) => {
+      btn.classList.toggle("active", isActive);
+      btn.title = isActive
+        ? "Автоперевод канала: ВКЛ (нажмите для выключения)"
+        : "Автоперевод канала: ВЫКЛ (нажмите для включения)";
+    });
+  }
+
+  function checkChannelChange() {
+    const currentChId = getCurrentChannelId();
+    if (currentChId && currentChId !== lastSeenChannelId) {
+      lastSeenChannelId = currentChId;
+      autoTranslateQueue.length = 0;
+      const isChannelActive = isAutoTranslateActiveForChannel(
+        currentChId,
+        autoTranslateEnabled,
+        autoTranslateChannels,
+      );
+      if (!isChannelActive) {
+        document.querySelectorAll('[id^="message-content-"]').forEach((el) => {
+          el.dataset.dgtAutoTranslated = "true";
+        });
+      }
+      updateAllAutoButtons();
+    }
+  }
+
+  function checkAndAutoTranslateMessages() {
+    const currentChId = getCurrentChannelId();
+    const isChannelActive = isAutoTranslateActiveForChannel(
+      currentChId,
+      autoTranslateEnabled,
+      autoTranslateChannels,
+    );
+    if (!isChannelActive) return;
+
+    const messages = Array.from(
+      document.querySelectorAll('[id^="message-content-"]'),
+    ).slice(-3);
+    messages.forEach((contentElement) => {
+      const rawText = getCleanMessageText(contentElement);
+      if (shouldAutoTranslateMessage(contentElement, rawText, true)) {
+        if (autoTranslateQueue.length < 8) {
+          autoTranslateQueue.push({ contentElement, rawText });
+          processAutoTranslateQueue();
+        }
+      }
+    });
+  }
+
+  async function processAutoTranslateQueue() {
+    if (isQueueProcessing) return;
+    isQueueProcessing = true;
+
+    while (autoTranslateQueue.length > 0) {
+      const item = autoTranslateQueue.shift();
+      const { contentElement, rawText } = item;
+
+      if (!contentElement || !contentElement.isConnected) continue;
+
+      const existing = contentElement.parentElement?.querySelector(
+        `.dgt-translation-box[data-for="${contentElement.id}"]`,
+      );
+      if (existing) continue;
+
+      contentElement.dataset.dgtAutoTranslated = "true";
+
+      const translationBox = document.createElement("div");
+      translationBox.className = "dgt-translation-box dgt-auto-box";
+      translationBox.dataset.for = contentElement.id;
+      translationBox.innerHTML = `
+        <div class="dgt-translation-header">
+          <span class="dgt-translation-title">⚡ Gemini [Auto] (${incomingLang})</span>
+          <button type="button" class="dgt-close-btn" title="Закрыть">✕</button>
+        </div>
+        <div class="dgt-translation-text">Перевод...</div>
+      `;
+
+      const closeBtn = translationBox.querySelector(".dgt-close-btn");
+      closeBtn.addEventListener("click", () => {
+        translationBox.remove();
+      });
+
+      contentElement.insertAdjacentElement("afterend", translationBox);
+      const textElement = translationBox.querySelector(
+        ".dgt-translation-text",
+      );
+
+      try {
+        const res = await requestTranslation(rawText, incomingLang);
+        textElement.textContent =
+          typeof res === "object" ? res.translatedText : res;
+      } catch (err) {
+        textElement.className = "dgt-translation-error";
+        textElement.textContent = `Ошибка: ${err.message}`;
+      }
+
+      await new Promise((r) => setTimeout(r, 350));
+    }
+
+    isQueueProcessing = false;
+  }
+
+  // Загрузка сохраненных настроек языков
+  if (typeof chrome !== "undefined" && chrome.storage?.local) {
+    chrome.storage.local.get(
+      [
+        "incomingLang",
+        "outgoingLang",
+        "reversePreviewEnabled",
+        "autoTranslateEnabled",
+        "autoTranslateChannels",
+      ],
+      (items) => {
+        if (items.incomingLang) incomingLang = items.incomingLang;
+        if (items.outgoingLang) outgoingLang = items.outgoingLang;
+        if (typeof items.reversePreviewEnabled === "boolean") {
+          reversePreviewEnabled = items.reversePreviewEnabled;
+        }
+        if (typeof items.autoTranslateEnabled === "boolean") {
+          autoTranslateEnabled = items.autoTranslateEnabled;
+        }
+        if (
+          items.autoTranslateChannels &&
+          typeof items.autoTranslateChannels === "object"
+        ) {
+          autoTranslateChannels = items.autoTranslateChannels;
+        }
+        updateAllAutoButtons();
+        checkAndAutoTranslateMessages();
+      },
+    );
+
+    // Отслеживание изменений настроек в реальном времени без перезагрузки вкладки
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === "local") {
+        if (changes.incomingLang) incomingLang = changes.incomingLang.newValue;
+        if (changes.outgoingLang) outgoingLang = changes.outgoingLang.newValue;
+        if (changes.reversePreviewEnabled) {
+          reversePreviewEnabled = changes.reversePreviewEnabled.newValue;
+        }
+        if (changes.autoTranslateEnabled) {
+          autoTranslateEnabled = Boolean(changes.autoTranslateEnabled.newValue);
+          updateAllAutoButtons();
+          checkAndAutoTranslateMessages();
+        }
+        if (changes.autoTranslateChannels) {
+          autoTranslateChannels = changes.autoTranslateChannels.newValue || {};
+          updateAllAutoButtons();
+          checkAndAutoTranslateMessages();
+        }
+      }
+    });
+  }
 
   // Вспомогательная функция безопасного вызова перевода через фоновый воркер
-  function requestTranslation(text, targetLang) {
+  function requestTranslation(text, targetLang, options = {}) {
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         {
           action: "TRANSLATE",
           text: text,
           targetLanguage: targetLang,
+          includeReverse: Boolean(options.includeReverse),
         },
         (response) => {
           if (chrome.runtime.lastError) {
@@ -47,7 +259,10 @@
             reject(new Error(response?.error || "Неизвестная ошибка перевода"));
             return;
           }
-          resolve(response.translatedText);
+          resolve({
+            translatedText: response.translatedText,
+            reversePreview: response.reversePreview || "",
+          });
         },
       );
     });
@@ -165,8 +380,9 @@
         );
 
         try {
-          const translated = await requestTranslation(rawText, incomingLang);
-          textElement.textContent = translated;
+          const res = await requestTranslation(rawText, incomingLang);
+          textElement.textContent =
+            typeof res === "object" ? res.translatedText : res;
         } catch (error) {
           textElement.className = "dgt-translation-error";
           textElement.textContent = `Ошибка: ${error.message}`;
@@ -177,7 +393,69 @@
       });
 
       contentElement.appendChild(btn);
+
+      const currentChId = getCurrentChannelId();
+      const isChannelActive = isAutoTranslateActiveForChannel(
+        currentChId,
+        autoTranslateEnabled,
+        autoTranslateChannels,
+      );
+
+      if (
+        isChannelActive &&
+        shouldAutoTranslateMessage(contentElement, rawText, isChannelActive)
+      ) {
+        if (autoTranslateQueue.length < 8) {
+          autoTranslateQueue.push({ contentElement, rawText });
+          processAutoTranslateQueue();
+        }
+      }
     });
+  }
+
+  function showReversePreviewBox(
+    container,
+    originalText,
+    reverseText,
+    slateEditor,
+  ) {
+    if (!container || !reverseText) return;
+
+    // Удаляем предыдущую плашку если есть
+    container.querySelectorAll(".dgt-reverse-box").forEach((el) => el.remove());
+
+    const previewBox = document.createElement("div");
+    previewBox.className = "dgt-reverse-box";
+    previewBox.innerHTML = `
+      <div class="dgt-reverse-header">
+        <span class="dgt-reverse-title">🔍 Самопроверка (${getLangCode(outgoingLang)} ➔ RU):</span>
+        <div class="dgt-reverse-actions">
+          <button type="button" class="dgt-revert-btn">Отменить</button>
+          <button type="button" class="dgt-close-preview-btn">✕</button>
+        </div>
+      </div>
+      <div class="dgt-reverse-text">«${reverseText}»</div>
+    `;
+
+    const revertBtn = previewBox.querySelector(".dgt-revert-btn");
+    revertBtn.addEventListener("click", () => {
+      replaceSlateText(slateEditor, originalText);
+      previewBox.remove();
+    });
+
+    const closeBtn = previewBox.querySelector(".dgt-close-preview-btn");
+    closeBtn.addEventListener("click", () => {
+      previewBox.remove();
+    });
+
+    // Автоматическое скрытие через 8 секунд
+    let autoDismiss = setTimeout(() => {
+      previewBox.remove();
+    }, 8000);
+
+    previewBox.addEventListener("mouseenter", () => clearTimeout(autoDismiss));
+
+    container.prepend(previewBox);
   }
 
   // --- ОБРАБОТКА ИСХОДЯЩИХ СООБЩЕНИЙ (ПОЛЕ ВВОДА) ---
@@ -207,15 +485,126 @@
       return;
     }
 
-    if (buttonContainer.querySelector(".dgt-chat-input-btn")) {
+    if (buttonContainer.querySelector(".dgt-outgoing-wrapper")) {
       return;
     }
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "dgt-outgoing-wrapper";
 
     const outgoingBtn = document.createElement("button");
     outgoingBtn.className = "dgt-chat-input-btn";
     outgoingBtn.type = "button";
     outgoingBtn.title = `Перевести ввод на ${outgoingLang} (Ctrl + ~)`;
     outgoingBtn.innerHTML = GEMINI_ICON_SVG;
+
+    const langBadge = document.createElement("button");
+    langBadge.type = "button";
+    langBadge.className = "dgt-lang-badge";
+    langBadge.title = "Выбор языка перевода";
+    langBadge.innerHTML = `<span>${getLangCode(outgoingLang)}</span><span class="dgt-badge-arrow">▾</span>`;
+
+    let activeMenu = null;
+    let cleanupListeners = null;
+
+    const closeMenu = () => {
+      if (activeMenu) {
+        activeMenu.remove();
+        activeMenu = null;
+      }
+      if (cleanupListeners) {
+        cleanupListeners();
+        cleanupListeners = null;
+      }
+    };
+
+    langBadge.addEventListener("mousedown", (e) => e.preventDefault());
+    langBadge.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (activeMenu) {
+        closeMenu();
+        return;
+      }
+
+      const menu = document.createElement("div");
+      menu.className = "dgt-lang-menu";
+
+      const title = document.createElement("div");
+      title.className = "dgt-lang-menu-title";
+      title.textContent = "Язык перевода";
+      menu.appendChild(title);
+
+      SUPPORTED_LANGUAGES.forEach((lang) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        const isActive = lang.name === outgoingLang;
+        item.className = `dgt-lang-item ${isActive ? "active" : ""}`;
+        item.innerHTML = `
+          <span class="dgt-lang-item-name">${lang.name}</span>
+          <span class="dgt-lang-item-meta">
+            <span class="dgt-lang-item-code">${lang.code}</span>
+            ${isActive ? '<span class="dgt-lang-item-check">✓</span>' : ""}
+          </span>
+        `;
+
+        item.addEventListener("mousedown", (ev) => ev.preventDefault());
+        item.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          outgoingLang = lang.name;
+          langBadge.querySelector("span").textContent = lang.code;
+          outgoingBtn.title = `Перевести ввод на ${outgoingLang} (Ctrl + ~)`;
+          chrome.storage.local.set({ outgoingLang: lang.name });
+          closeMenu();
+        });
+
+        menu.appendChild(item);
+      });
+
+      document.body.appendChild(menu);
+      activeMenu = menu;
+
+      const updatePosition = () => {
+        if (!activeMenu || !langBadge.isConnected) {
+          closeMenu();
+          return;
+        }
+        const rect = langBadge.getBoundingClientRect();
+        const menuWidth = 170;
+        const left = Math.max(10, Math.min(window.innerWidth - menuWidth - 10, rect.right - menuWidth));
+        const bottom = Math.max(10, window.innerHeight - rect.top + 8);
+        activeMenu.style.left = `${left}px`;
+        activeMenu.style.bottom = `${bottom}px`;
+      };
+
+      updatePosition();
+
+      const onDocClick = (ev) => {
+        if (activeMenu && !activeMenu.contains(ev.target) && !langBadge.contains(ev.target)) {
+          closeMenu();
+        }
+      };
+
+      const onKeyDown = (ev) => {
+        if (ev.key === "Escape") {
+          closeMenu();
+        }
+      };
+
+      document.addEventListener("click", onDocClick, true);
+      document.addEventListener("keydown", onKeyDown, true);
+      window.addEventListener("resize", updatePosition);
+      window.addEventListener("scroll", updatePosition, true);
+
+      cleanupListeners = () => {
+        document.removeEventListener("click", onDocClick, true);
+        document.removeEventListener("keydown", onKeyDown, true);
+        window.removeEventListener("resize", updatePosition);
+        window.removeEventListener("scroll", updatePosition, true);
+      };
+    });
 
     const translateAndReplaceInput = async () => {
       const currentText = slateEditor.innerText.trim();
@@ -224,11 +613,24 @@
       outgoingBtn.classList.add("dgt-loading");
 
       try {
-        const translatedText = await requestTranslation(
-          currentText,
-          outgoingLang,
-        );
-        replaceSlateText(slateEditor, translatedText);
+        const res = await requestTranslation(currentText, outgoingLang, {
+          includeReverse: reversePreviewEnabled,
+        });
+
+        const translated =
+          typeof res === "object" ? res.translatedText : res;
+        replaceSlateText(slateEditor, translated);
+
+        if (reversePreviewEnabled && res.reversePreview) {
+          const channelArea =
+            form.closest('[class*="channelTextArea"]') || form;
+          showReversePreviewBox(
+            channelArea,
+            currentText,
+            res.reversePreview,
+            slateEditor,
+          );
+        }
       } catch (err) {
         alert(`Не удалось перевести текст: ${err.message}`);
       } finally {
@@ -247,18 +649,56 @@
       translateAndReplaceInput();
     });
 
-    buttonContainer.prepend(outgoingBtn);
+    const autoBtn = document.createElement("button");
+    autoBtn.type = "button";
+    autoBtn.className = "dgt-auto-btn";
+    autoBtn.innerHTML = `<span>⚡</span><span class="dgt-auto-text">Авто</span>`;
+
+    const currentChId = getCurrentChannelId();
+    const isAutoActive = isAutoTranslateActiveForChannel(
+      currentChId,
+      autoTranslateEnabled,
+      autoTranslateChannels,
+    );
+    if (isAutoActive) {
+      autoBtn.classList.add("active");
+      autoBtn.title = "Автоперевод канала: ВКЛ (нажмите для выключения)";
+    } else {
+      autoBtn.title = "Автоперевод канала: ВЫКЛ (нажмите для включения)";
+    }
+
+    autoBtn.addEventListener("mousedown", (e) => e.preventDefault());
+    autoBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const chId = getCurrentChannelId();
+      if (!chId) return;
+
+      const active = isAutoTranslateActiveForChannel(
+        chId,
+        autoTranslateEnabled,
+        autoTranslateChannels,
+      );
+      const next = !active;
+      autoTranslateChannels[chId] = next;
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        chrome.storage.local.set({ autoTranslateChannels: { ...autoTranslateChannels } });
+      }
+      updateAllAutoButtons();
+      if (next) {
+        checkAndAutoTranslateMessages();
+      }
+    });
+
+    wrapper.appendChild(outgoingBtn);
+    wrapper.appendChild(langBadge);
+    wrapper.appendChild(autoBtn);
+    buttonContainer.prepend(wrapper);
 
     if (slateEditor.dataset.dgtKeybound !== "true") {
       slateEditor.dataset.dgtKeybound = "true";
       slateEditor.addEventListener("keydown", (e) => {
-        const isTilde =
-          e.code === "Backquote" ||
-          e.key === "`" ||
-          e.key === "~" ||
-          e.key === "ё" ||
-          e.key === "Ё";
-        if (e.ctrlKey && !e.altKey && isTilde) {
+        if (isHotkeyTriggered(e)) {
           e.preventDefault();
           translateAndReplaceInput();
         }
@@ -266,24 +706,59 @@
     }
   }
 
+  function isTildeKey(e) {
+    if (!e) return false;
+    return (
+      e.code === "Backquote" ||
+      e.key === "`" ||
+      e.key === "~" ||
+      e.key === "ё" ||
+      e.key === "Ё"
+    );
+  }
+
+  function isHotkeyTriggered(e) {
+    if (!e) return false;
+    return Boolean(e.ctrlKey && !e.altKey && isTildeKey(e));
+  }
+
   // --- НАБЛЮДАТЕЛЬ ЗА ВИРТУАЛЬНЫМ DOM DISCORD ---
 
   let observerTimeout = null;
-  const observer = new MutationObserver(() => {
-    if (observerTimeout) return;
-    observerTimeout = setTimeout(() => {
-      attachIncomingButtons();
-      attachOutgoingButton();
-      observerTimeout = null;
-    }, 100);
-  });
+  if (typeof document !== "undefined" && document.body) {
+    const observer = new MutationObserver(() => {
+      if (observerTimeout) return;
+      observerTimeout = setTimeout(() => {
+        checkChannelChange();
+        attachIncomingButtons();
+        attachOutgoingButton();
+        updateAllAutoButtons();
+        observerTimeout = null;
+      }, 100);
+    });
 
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-  });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
 
-  // Первичная инициализация при загрузке
-  attachIncomingButtons();
-  attachOutgoingButton();
+    // Первичная инициализация при загрузке
+    checkChannelChange();
+    attachIncomingButtons();
+    attachOutgoingButton();
+    updateAllAutoButtons();
+  }
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = {
+      isTildeKey,
+      isHotkeyTriggered,
+      getCleanMessageText,
+      getLangCode,
+      SUPPORTED_LANGUAGES,
+      getCurrentChannelId,
+      isAutoTranslateActiveForChannel,
+      shouldAutoTranslateMessage,
+    };
+  }
 })();

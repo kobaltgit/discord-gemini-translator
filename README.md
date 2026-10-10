@@ -25,9 +25,24 @@
 - 📥 **Translate Incoming Messages**:
   - Direct translation button on every message and quote/reply in the chat.
   - Clean inline translation bubble right below the original text, dismissable in one click.
+- ⚡ **Channel Auto-Translate Mode**:
+  - Instant `[⚡ Auto]` toggle button embedded in the chat input bar for the current channel.
+  - Global auto-translate toggle available in extension settings.
+  - Smart queue with rate-limit protection (350 ms throttle) and automatic skipping of historical backlog.
 - 📤 **Translate Outgoing Messages Before Sending**:
   - Gemini translation button embedded beside the Discord input bar.
   - Ergonomic shortcut: **`Ctrl + ~`** (Tilde / `ё`) instantly translates the typed text in the Discord Slate editor to the target language before sending.
+- 🌐 **Quick Language Switcher in Chat Bar**:
+  - Distinct `[ EN ▾ ]` badge near the input bar opens a full popout menu with 9 supported languages without leaving Discord.
+- 🔍 **Reverse Translation Preview (Self-Check)**:
+  - Verifies outgoing translations with a reverse preview box (`RU ➔ EN ➔ RU`) right above the chat bar before sending.
+  - Includes a one-click **"Revert"** button to restore your original typed text if the nuances don't match.
+  - Optimized structured prompt extracts both translations in a single API call (50% quota savings).
+- 🎭 **Translation Tone & Style Customization**:
+  - Choose between **Gamer / Casual Slang**, **Neutral (Conversational)**, **Formal / Professional**, or **Concise (Fast Calls)**.
+- ⚡ **Local LRU Translation Cache**:
+  - High-speed cache for up to 500 recent phrases stored in `chrome.storage.local`.
+  - Repeated phrases resolve in 0 ms with zero API quota consumption.
 - 🧠 **Full Support for Modern Google Gemini Models**:
   - Automatically fetches the list of available text models from your API key.
   - Supports **Gemini 2.5 Flash**, **Gemini 2.5 Flash-Lite**, **Gemini 2.5 Pro**, and **Gemini 1.5 Flash/Pro**.

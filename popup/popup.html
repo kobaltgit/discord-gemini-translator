@@ -88,6 +88,40 @@
           </div>
         </div>
 
+        <div class="form-group">
+          <label for="toneSelect" data-i18n="toneSelectLabel">Стиль перевода:</label>
+          <select id="toneSelect">
+            <option value="neutral" data-i18n="toneOptionNeutral">Нейтральный (разговорный)</option>
+            <option value="casual" data-i18n="toneOptionCasual">Геймерский / Сленг</option>
+            <option value="formal" data-i18n="toneOptionFormal">Официальный / Вежливый</option>
+            <option value="concise" data-i18n="toneOptionConcise">Краткий (для коллов)</option>
+          </select>
+        </div>
+
+        <div class="checkbox-group">
+          <label class="checkbox-label" for="reversePreviewToggle">
+            <input type="checkbox" id="reversePreviewToggle" checked />
+            <span data-i18n="reversePreviewLabel">Обратный перевод для самопроверки</span>
+          </label>
+        </div>
+
+        <div class="checkbox-group">
+          <label class="checkbox-label" for="autoTranslateToggle">
+            <input type="checkbox" id="autoTranslateToggle" />
+            <span data-i18n="autoTranslateLabel">Глобальный автоперевод всех каналов</span>
+          </label>
+        </div>
+
+        <div class="cache-box">
+          <div class="cache-info">
+            <span data-i18n="cacheLabel">Кэш переводов:</span>
+            <span id="cacheCount" class="cache-badge">0</span>
+          </div>
+          <button type="button" id="clearCacheBtn" class="secondary-btn btn-xs" data-i18n="clearCacheBtn">
+            Очистить
+          </button>
+        </div>
+
         <div id="statusMessage" class="status-message"></div>
 
         <button type="button" id="saveBtn" class="primary-btn" data-i18n="saveBtn">
