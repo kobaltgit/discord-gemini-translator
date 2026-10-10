@@ -11,6 +11,7 @@ const {
   getCurrentChannelId,
   isAutoTranslateActiveForChannel,
   shouldAutoTranslateMessage,
+  isLikelySameLanguage,
 } = require("../content/content.js");
 
 describe("Content Script - Hotkey Detection (Ctrl + ~)", () => {
@@ -104,6 +105,9 @@ describe("Content Script - Quick Language Switcher", () => {
     assert.strictEqual(getLangCode("Russian"), "RU");
     assert.strictEqual(getLangCode("German"), "DE");
     assert.strictEqual(getLangCode("Japanese"), "JA");
+    assert.strictEqual(getLangCode("en"), "EN");
+    assert.strictEqual(getLangCode("ru"), "RU");
+    assert.strictEqual(getLangCode("fr"), "FR");
     assert.strictEqual(getLangCode("unknown"), "UN");
     assert.strictEqual(getLangCode(null), "EN");
   });
@@ -158,11 +162,16 @@ describe("Content Script - Channel Auto-Translate", () => {
     assert.strictEqual(isAutoTranslateActiveForChannel(null, false, channels), false);
   });
 
-  it("should filter messages for auto-translation", () => {
+  it("should filter messages for auto-translation and skip already-target language", () => {
     const el = { id: "msg-1", dataset: {}, parentElement: { querySelector: () => null } };
 
-    // Active channel, valid text
+    // Active channel, valid foreign text
     assert.strictEqual(shouldAutoTranslateMessage(el, "Hello world", true), true);
+
+    // Active channel, message already in target language (Russian) should be skipped
+    const ruEl = { id: "msg-ru", dataset: {}, parentElement: { querySelector: () => null } };
+    assert.strictEqual(shouldAutoTranslateMessage(ruEl, "Привет всем как дела", true), false);
+    assert.strictEqual(ruEl.dataset.dgtAutoTranslated, "true");
 
     // Inactive channel
     assert.strictEqual(shouldAutoTranslateMessage(el, "Hello world", false), false);

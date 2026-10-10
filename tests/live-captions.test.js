@@ -357,4 +357,48 @@ describe("Content Script - Live Captions UI", () => {
     handleIncomingLiveCaption(" сегодня!", true);
     assert.strictEqual(body.children[1].children[0].textContent, "Отличная погода сегодня!");
   });
+
+  it("should merge streaming text correctly with overlap handling and spacing", () => {
+    const { mergeStreamingText, cleanStutterRepetitions } = require("../content/content.js");
+
+    // Seamless overlap
+    assert.strictEqual(
+      mergeStreamingText("Я работаю в", "в разработке"),
+      "Я работаю в разработке",
+    );
+
+    // Missing space between words
+    assert.strictEqual(
+      mergeStreamingText("Привет", "как дела"),
+      "Привет как дела",
+    );
+
+    // Punctuation preserved
+    assert.strictEqual(
+      mergeStreamingText("Привет, ", "друг!"),
+      "Привет, друг!",
+    );
+
+    // Prefixes
+    assert.strictEqual(
+      mergeStreamingText("Привет мир", "Привет мир и космос"),
+      "Привет мир и космос",
+    );
+
+    // Anti-stutter repetition collapse (3+ identical words collapsed to 1)
+    assert.strictEqual(
+      cleanStutterRepetitions("я я я я я в дискорде"),
+      "я в дискорде",
+    );
+    assert.strictEqual(
+      cleanStutterRepetitions("он он он он разработчик"),
+      "он разработчик",
+    );
+    // 2 natural words preserved
+    assert.strictEqual(
+      cleanStutterRepetitions("да, да, в другом дискорде"),
+      "да, да, в другом дискорде",
+    );
+  });
 });
+

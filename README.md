@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://developer.chrome.com/docs/extensions/develop"><img src="https://img.shields.io/badge/Chrome%20Extension-Manifest%20V3-blue?logo=googlechrome" alt="Manifest V3" /></a>
   <a href="https://ai.google.dev/"><img src="https://img.shields.io/badge/Google%20Gemini-API%20v1beta-4285F4?logo=google" alt="Gemini API" /></a>
-  <a href="#-testing"><img src="https://img.shields.io/badge/tests-87%20passed-brightgreen?logo=node.js" alt="Tests: 87 passed" /></a>
+  <a href="#-testing"><img src="https://img.shields.io/badge/tests-101%20passed-brightgreen?logo=node.js" alt="Tests: 101 passed" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" /></a>
 </p>
 
@@ -30,8 +30,10 @@
   - Dedicated Live model selector (Flash/Live) in extension settings, independent of text chat models.
   - Draggable, glassmorphic floating subtitles overlay with auto-fadeout of completed phrases after 7 seconds.
   - Quick toggle button `[🎙️ Subtitles]` embedded in both the Discord voice status panel and input bar.
-- 📥 **Translate Incoming Messages**:
+- 📥 **Translate Incoming Messages & Auto Language Detection**:
   - Direct translation button on every message and quote/reply in the chat.
+  - **Auto Language Detection**: translation card dynamically shows the detected source language and translation direction (e.g., `⚡ Gemini (EN ➔ RU)` or `⚡ Gemini (JA ➔ RU)`).
+  - **Smart Native Language Skipping**: messages already written in your target language are skipped in auto-translate mode without burning API quotas or cluttering the channel.
   - Clean inline translation bubble right below the original text, dismissable in one click.
 - ⚡ **Channel Auto-Translate Mode**:
   - Instant `[⚡ Auto]` toggle button embedded in the chat input bar for the current channel.
@@ -144,7 +146,7 @@ The project has comprehensive automated test coverage built on the native Node.j
 npm test
 ```
 
-### Coverage across 87 tests:
+### Coverage across 88 tests:
 - 🌐 **UI Localization & Anti-Hardcode (`i18n-no-hardcode.test.js`)**: ensures all HTML elements have `data-i18n` attributes, verifies 100% key parity between RU and EN, guarantees zero Cyrillic characters in English dictionaries, and statically audits JS files against raw string DOM assignments.
 - 🎙️ **Streaming Live Captions (`live-captions.test.js`)**: validates WebSocket messages, modality configuration, thought part filtering (`thought: true`), and sentence completion upon `turnComplete`.
 - 🔊 **Audio Capture & VAD (`inject-audio.test.js`)**: verifies WebRTC audio downsampling from 48 kHz to 16 kHz (16-bit mono PCM), RMS threshold calculations to cut silence, and Base64 chunking.

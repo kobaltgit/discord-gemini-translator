@@ -58,6 +58,7 @@ function setCachedTranslation(
   tone = "neutral",
   translation = "",
   maxEntries = 500,
+  extra = {},
 ) {
   const safeCache = cache && typeof cache === "object" ? { ...cache } : {};
   const key = makeCacheKey(text, targetLanguage, tone);
@@ -65,6 +66,9 @@ function setCachedTranslation(
   delete safeCache[key];
   safeCache[key] = {
     translation,
+    reverse: extra.reverse || "",
+    detectedLanguage: extra.detectedLanguage || "",
+    isAlreadyTarget: Boolean(extra.isAlreadyTarget),
     updatedAt: Date.now(),
   };
 
@@ -126,12 +130,68 @@ function normalizeModelName(model) {
   return trimmed.startsWith("models/") ? trimmed : `models/${trimmed}`;
 }
 
+function isLikelySameLanguage(text, targetLanguage) {
+  if (!text || typeof text !== "string") return false;
+  if (!targetLanguage || typeof targetLanguage !== "string") return false;
+
+  // Clean URLs, mentions, emojis, and punctuation
+  const clean = text
+    .replace(/<@&?\d+>/g, "")
+    .replace(/<#\d+>/g, "")
+    .replace(/<a?:\w+:\d+>/g, "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/[0-9\s\p{P}\p{S}]/gu, "");
+
+  if (clean.length < 2) return false;
+
+  const target = targetLanguage.toLowerCase().trim();
+
+  // Russian / Ukrainian: check Cyrillic script
+  if (target === "russian" || target === "ukrainian") {
+    const cyrillicMatches = clean.match(/[\u0400-\u04FF]/g) || [];
+    const latinMatches = clean.match(/[a-zA-Z]/g) || [];
+    const total = cyrillicMatches.length + latinMatches.length;
+    if (total >= 2 && cyrillicMatches.length / total >= 0.8) {
+      return true;
+    }
+  }
+
+  // Japanese: Hiragana & Katakana
+  if (target === "japanese") {
+    const kanaMatches = clean.match(/[\u3040-\u309F\u30A0-\u30FF]/g) || [];
+    if (kanaMatches.length >= 2) {
+      return true;
+    }
+  }
+
+  // Korean: Hangul
+  if (target === "korean") {
+    const hangulMatches = clean.match(/[\uAC00-\uD7AF\u1100-\u11FF]/g) || [];
+    if (hangulMatches.length >= 2) {
+      return true;
+    }
+  }
+
+  // Chinese: Han characters without Japanese Kana or Korean Hangul
+  if (target === "chinese") {
+    const hanMatches = clean.match(/[\u4E00-\u9FFF]/g) || [];
+    const kanaMatches = clean.match(/[\u3040-\u309F\u30A0-\u30FF]/g) || [];
+    const hangulMatches = clean.match(/[\uAC00-\uD7AF\u1100-\u11FF]/g) || [];
+    if (hanMatches.length >= 2 && kanaMatches.length === 0 && hangulMatches.length === 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function buildTranslationPayload(
   text,
   targetLanguage,
   normalizedModel,
   tone = "neutral",
   includeReverse = false,
+  detectLanguage = false,
 ) {
   const toneInstruction =
     TONE_INSTRUCTIONS[tone] || TONE_INSTRUCTIONS.neutral;
@@ -145,9 +205,17 @@ function buildTranslationPayload(
     `4. Style/Tone instruction: ${toneInstruction}`,
   ];
 
-  if (includeReverse) {
+  if (detectLanguage || includeReverse) {
+    const schema = {
+      detectedLanguage: "Source language name in English (e.g. English, Russian, German, French, Spanish, Japanese, Chinese)",
+      isAlreadyTarget: `boolean: true if the source text is already written in ${targetLanguage}, false otherwise`,
+      translation: `translated text in ${targetLanguage}; if isAlreadyTarget is true, keep original text intact`,
+    };
+    if (includeReverse) {
+      schema.reverse = "back-translation of the result into original source language for meaning verification";
+    }
     rules.push(
-      "5. OUTPUT FORMAT: You MUST return a JSON object with two fields: {\"translation\": \"<translated text in target language>\", \"reverse\": \"<back-translation of the result into original source language for meaning verification>\"}. Output ONLY raw valid JSON without markdown wrapping or commentary.",
+      `5. OUTPUT FORMAT: You MUST return a JSON object with fields: ${JSON.stringify(schema)}. Output ONLY raw valid JSON without markdown wrapping or commentary.`
     );
   } else {
     rules.push(
@@ -209,7 +277,11 @@ function cleanThinkingArtifacts(translatedResult) {
   return lastMeaningfulLine || translatedResult;
 }
 
-function extractCleanTranslation(candidate, includeReverse = false) {
+function extractCleanTranslation(
+  candidate,
+  includeReverse = false,
+  detectLanguage = false,
+) {
   if (
     !candidate ||
     !candidate.content?.parts ||
@@ -230,7 +302,7 @@ function extractCleanTranslation(candidate, includeReverse = false) {
 
   const rawText = targetPart?.text ? targetPart.text.trim() : "";
 
-  if (includeReverse) {
+  if (includeReverse || detectLanguage) {
     try {
       const stripped = rawText
         .replace(/^```json\s*/i, "")
@@ -238,10 +310,24 @@ function extractCleanTranslation(candidate, includeReverse = false) {
         .replace(/```$/, "")
         .trim();
       const parsed = JSON.parse(stripped);
-      if (parsed && typeof parsed.translation === "string") {
+      if (parsed && typeof parsed === "object") {
+        const translation =
+          typeof parsed.translation === "string"
+            ? cleanThinkingArtifacts(parsed.translation.trim())
+            : "";
+        const reverse =
+          typeof parsed.reverse === "string" ? parsed.reverse.trim() : "";
+        const detectedLanguage =
+          typeof parsed.detectedLanguage === "string"
+            ? parsed.detectedLanguage.trim()
+            : "";
+        const isAlreadyTarget = Boolean(parsed.isAlreadyTarget);
+
         return {
-          translation: cleanThinkingArtifacts(parsed.translation.trim()),
-          reverse: typeof parsed.reverse === "string" ? parsed.reverse.trim() : "",
+          translation,
+          reverse,
+          detectedLanguage,
+          isAlreadyTarget,
         };
       }
     } catch {
@@ -250,6 +336,8 @@ function extractCleanTranslation(candidate, includeReverse = false) {
     return {
       translation: cleanThinkingArtifacts(rawText),
       reverse: "",
+      detectedLanguage: "",
+      isAlreadyTarget: false,
     };
   }
 
@@ -301,12 +389,28 @@ async function handleFetchModels(apiKey) {
 
 async function handleTranslate(
   text,
-  targetLanguage,
-  requestedTone,
+  targetLanguage = "Russian",
+  requestedTone = "neutral",
   includeReverse = false,
+  detectLanguage = false,
 ) {
   if (!text || text.trim() === "") {
-    return includeReverse ? { translation: "", reverse: "" } : "";
+    return includeReverse || detectLanguage
+      ? { translation: "", reverse: "", detectedLanguage: "", isAlreadyTarget: false }
+      : "";
+  }
+
+  // Pre-check for identical language to avoid unnecessary API calls
+  if (isLikelySameLanguage(text, targetLanguage)) {
+    if (includeReverse || detectLanguage) {
+      return {
+        translation: text,
+        reverse: "",
+        detectedLanguage: targetLanguage,
+        isAlreadyTarget: true,
+      };
+    }
+    return text;
   }
 
   const storageData = await chrome.storage.local.get([
@@ -321,21 +425,33 @@ async function handleTranslate(
   const cache = storageData.translationCache || {};
 
   // Проверяем локальный кэш
-  const cached = getCachedTranslation(cache, text, targetLanguage, tone);
+  const key = makeCacheKey(text, targetLanguage, tone);
+  const cached = cache[key];
   if (cached) {
-    if (includeReverse) {
-      if (typeof cached === "object" && cached.translation) {
+    if (includeReverse || detectLanguage) {
+      const hasDetectionInfo = Boolean(
+        (cached && typeof cached === "object" && cached.detectedLanguage) ||
+        (cached && typeof cached === "object" && typeof cached.isAlreadyTarget === "boolean"),
+      );
+      if (!detectLanguage || hasDetectionInfo) {
+        if (typeof cached === "object" && cached.translation) {
+          return {
+            translation: cached.translation,
+            reverse: cached.reverse || "",
+            detectedLanguage: cached.detectedLanguage || "",
+            isAlreadyTarget: Boolean(cached.isAlreadyTarget),
+          };
+        }
         return {
-          translation: cached.translation,
-          reverse: cached.reverse || "",
+          translation: typeof cached === "string" ? cached : (cached.translation || ""),
+          reverse: "",
+          detectedLanguage: "",
+          isAlreadyTarget: false,
         };
       }
-      return {
-        translation: typeof cached === "string" ? cached : (cached.translation || ""),
-        reverse: "",
-      };
+    } else {
+      return typeof cached === "object" ? cached.translation : cached;
     }
-    return typeof cached === "object" ? cached.translation : cached;
   }
 
   if (!apiKey || apiKey.trim() === "") {
@@ -352,6 +468,7 @@ async function handleTranslate(
     normalizedModel,
     tone,
     includeReverse,
+    detectLanguage,
   );
 
   let response = await fetch(endpoint, {
@@ -391,7 +508,11 @@ async function handleTranslate(
 
   const data = await response.json();
   const candidate = data.candidates?.[0];
-  const translatedResult = extractCleanTranslation(candidate, includeReverse);
+  const translatedResult = extractCleanTranslation(
+    candidate,
+    includeReverse,
+    detectLanguage,
+  );
 
   // Сохраняем в кэш
   try {
@@ -405,13 +526,9 @@ async function handleTranslate(
       targetLanguage,
       tone,
       translationText,
+      500,
+      typeof translatedResult === "object" ? translatedResult : {},
     );
-    if (typeof translatedResult === "object" && translatedResult.reverse) {
-      const key = makeCacheKey(text, targetLanguage, tone);
-      if (updatedCache[key]) {
-        updatedCache[key].reverse = translatedResult.reverse;
-      }
-    }
     chrome.storage.local.set({ translationCache: updatedCache });
   } catch (err) {
     console.warn("Failed to update translation cache:", err);
@@ -444,18 +561,24 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
         request.targetLanguage,
         request.tone,
         Boolean(request.includeReverse),
+        Boolean(request.detectLanguage ?? true),
       )
         .then((res) => {
           if (typeof res === "object" && res !== null && "translation" in res) {
             sendResponse({
               success: true,
               translatedText: res.translation,
-              reversePreview: res.reverse,
+              reversePreview: res.reverse || "",
+              detectedLanguage: res.detectedLanguage || "",
+              isAlreadyTarget: Boolean(res.isAlreadyTarget),
             });
           } else {
             sendResponse({
               success: true,
               translatedText: res,
+              reversePreview: "",
+              detectedLanguage: "",
+              isAlreadyTarget: false,
             });
           }
         })
@@ -600,7 +723,7 @@ function buildLiveSetupMessage(
     setup.systemInstruction = {
       parts: [
         {
-          text: `You are an ultra-fast real-time speech translator for Discord voice chat. Listen to incoming spoken audio and translate it immediately into ${lang}. Speak only the translation in ${lang} clearly and concisely. Do not repeat original foreign words, do not explain or add commentary, output only the clean translation.`,
+          text: `You are a real-time speech translator for Discord voice chat. Listen to incoming spoken audio and translate it immediately into natural ${lang}. Speak only the clean translation in ${lang} clearly and concisely. Do not hallucinate words, do not repeat words in a loop, do not explain or add commentary. If there is only noise or silence, produce nothing.`,
         },
       ],
     };
@@ -612,10 +735,6 @@ function buildLiveSetupMessage(
 function buildLiveAudioChunkMessage(pcmBase64) {
   return {
     realtimeInput: {
-      audio: {
-        mimeType: "audio/pcm;rate=16000",
-        data: pcmBase64,
-      },
       mediaChunks: [
         {
           mimeType: "audio/pcm;rate=16000",
@@ -951,5 +1070,6 @@ if (typeof module !== "undefined" && module.exports) {
     extractCleanTranslation,
     handleFetchModels,
     handleTranslate,
+    isLikelySameLanguage,
   };
 }

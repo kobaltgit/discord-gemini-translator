@@ -264,7 +264,14 @@
       const bufferSize = 4096;
       scriptProcessor = ctx.createScriptProcessor(bufferSize, 1, 1);
       mixer.connect(scriptProcessor);
-      scriptProcessor.connect(ctx.destination);
+
+      // В Chrome scriptProcessor должен быть соединён с destination для работы onaudioprocess.
+      // Используем заглушку с нулевым усилением (gain = 0), чтобы захватываемый звук
+      // не воспроизводился повторно в динамики пользователя и не создавал петлю эха.
+      const muteGain = ctx.createGain();
+      muteGain.gain.value = 0;
+      scriptProcessor.connect(muteGain);
+      muteGain.connect(ctx.destination);
 
       scriptProcessor.onaudioprocess = (e) => {
         if (!isVoiceCaptureActive) return;

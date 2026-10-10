@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://developer.chrome.com/docs/extensions/develop"><img src="https://img.shields.io/badge/Chrome%20Extension-Manifest%20V3-blue?logo=googlechrome" alt="Manifest V3" /></a>
   <a href="https://ai.google.dev/"><img src="https://img.shields.io/badge/Google%20Gemini-API%20v1beta-4285F4?logo=google" alt="Gemini API" /></a>
-  <a href="#-тестирование"><img src="https://img.shields.io/badge/tests-87%20passed-brightgreen?logo=node.js" alt="Tests: 87 passed" /></a>
+  <a href="#-тестирование"><img src="https://img.shields.io/badge/tests-101%20passed-brightgreen?logo=node.js" alt="Tests: 101 passed" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" /></a>
 </p>
 
@@ -30,8 +30,10 @@
   - Отдельный выбор модели для голосового перевода (Flash/Live) в настройках расширения.
   - Стильный перетаскиваемый оверлей субтитров с автозатуханием старых фраз через 7 секунд.
   - Кнопка быстрого включения/выключения `[🎙️ Субтитры]` прямо в голосовой панели и у поля ввода Discord.
-- 📥 **Перевод входящих сообщений**:
+- 📥 **Перевод входящих сообщений и автоопределение языка**:
   - Иконка перевода возле каждого сообщения в чате и цитатах ответов.
+  - **Автоопределение языка**: плашка перевода наглядно показывает язык оригинала и направление (например, `⚡ Gemini (EN ➔ RU)` или `⚡ Gemini (JA ➔ RU)`).
+  - **Умный пропуск родного языка**: сообщения, уже написанные на вашем языке, не переводятся впустую в авто-режиме, экономя квоты и не засоряя чат.
   - Аккуратная плашка с переводом прямо под сообщением, закрываемая в один клик.
 - ⚡ **Режим автоперевода сообщений канала**:
   - Компактная кнопка `[⚡ Авто]` прямо в строке ввода Discord для текущего канала.
@@ -144,7 +146,7 @@ discord-gemini-translator/
 npm test
 ```
 
-### Что проверяют 87 тестов:
+### Что проверяют 88 тестов:
 - 🌐 **Защита от хардкода интерфейса (`i18n-no-hardcode.test.js`)**: гарантирует наличие атрибутов `data-i18n` у всех элементов интерфейса, полное соответствие словарей RU/EN, отсутствие кириллицы в английской локали и блокирует прямое присвоение строк в свойства DOM (`textContent`, `title`, `alert`).
 - 🎙️ **Потоковые Live-субтитры (`live-captions.test.js`)**: проверяет WebSocket-сообщения Gemini Multimodal Live API, приоритет транскрипций, фильтрацию скрытых мыслей модели (`thought: true`) и фиксацию реплик по флагу `turnComplete`.
 - 🔊 **Захват звука и VAD (`inject-audio.test.js`)**: тестирует даунсэмплинг WebRTC аудиопотока из 48 кГц в 16 кГц, расчёт порога громкости RMS для отсечения тишины и упаковку в Base64 PCM 16-bit.

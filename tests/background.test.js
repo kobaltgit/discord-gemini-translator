@@ -11,6 +11,8 @@ const {
   getCachedTranslation,
   setCachedTranslation,
   TONE_INSTRUCTIONS,
+  isLikelySameLanguage,
+  handleTranslate,
 } = require("../background/background.js");
 
 describe("Background Service Worker - Model Filtering & Sorting", () => {
@@ -403,5 +405,137 @@ describe("Background Service Worker - Reverse Translation Preview", () => {
     const result = extractCleanTranslation(candidate, true);
     assert.strictEqual(result.translation, "Just raw text without JSON formatting");
     assert.strictEqual(result.reverse, "");
+  });
+});
+
+describe("Background Service Worker - Language Auto-Detection", () => {
+  it("should construct JSON schema requesting detectedLanguage and isAlreadyTarget when detectLanguage is true", () => {
+    const payload = buildTranslationPayload(
+      "Hello world",
+      "Russian",
+      "models/gemini-2.5-flash",
+      "neutral",
+      false,
+      true,
+    );
+
+    assert.ok(payload.systemInstruction);
+    const instruction = payload.systemInstruction.parts[0].text;
+    assert.ok(instruction.includes("detectedLanguage"));
+    assert.ok(instruction.includes("isAlreadyTarget"));
+    assert.ok(instruction.includes("JSON object"));
+  });
+
+  it("should parse detectedLanguage and isAlreadyTarget from JSON response", () => {
+    const candidate = {
+      content: {
+        parts: [
+          {
+            text: "```json\n{\n  \"detectedLanguage\": \"English\",\n  \"isAlreadyTarget\": false,\n  \"translation\": \"Привет мир\"\n}\n```",
+          },
+        ],
+      },
+    };
+    const result = extractCleanTranslation(candidate, false, true);
+    assert.strictEqual(result.detectedLanguage, "English");
+    assert.strictEqual(result.isAlreadyTarget, false);
+    assert.strictEqual(result.translation, "Привет мир");
+    assert.strictEqual(result.reverse, "");
+  });
+
+  it("should parse both reverse check and detectedLanguage when both are enabled", () => {
+    const candidate = {
+      content: {
+        parts: [
+          {
+            text: JSON.stringify({
+              detectedLanguage: "German",
+              isAlreadyTarget: false,
+              translation: "Привет всем",
+              reverse: "Hallo allerseits",
+            }),
+          },
+        ],
+      },
+    };
+    const result = extractCleanTranslation(candidate, true, true);
+    assert.strictEqual(result.detectedLanguage, "German");
+    assert.strictEqual(result.isAlreadyTarget, false);
+    assert.strictEqual(result.translation, "Привет всем");
+    assert.strictEqual(result.reverse, "Hallo allerseits");
+  });
+
+  it("should detect isAlreadyTarget when source is already in target language", () => {
+    const candidate = {
+      content: {
+        parts: [
+          {
+            text: JSON.stringify({
+              detectedLanguage: "Russian",
+              isAlreadyTarget: true,
+              translation: "Привет, как дела?",
+            }),
+          },
+        ],
+      },
+    };
+    const result = extractCleanTranslation(candidate, false, true);
+    assert.strictEqual(result.detectedLanguage, "Russian");
+    assert.strictEqual(result.isAlreadyTarget, true);
+    assert.strictEqual(result.translation, "Привет, как дела?");
+  });
+});
+
+describe("Background Service Worker - Fast Language Check (isLikelySameLanguage)", () => {
+  it("should recognize Russian Cyrillic text for Russian targetLanguage", () => {
+    assert.strictEqual(isLikelySameLanguage("Привет, как дела?", "Russian"), true);
+    assert.strictEqual(isLikelySameLanguage("Сегодня отличная погода в дискорде", "Russian"), true);
+    assert.strictEqual(isLikelySameLanguage("Давайте играть", "russian"), true);
+  });
+
+  it("should recognize Ukrainian Cyrillic text for Ukrainian targetLanguage", () => {
+    assert.strictEqual(isLikelySameLanguage("Привіт усім!", "Ukrainian"), true);
+  });
+
+  it("should return false for foreign language when target is Russian", () => {
+    assert.strictEqual(isLikelySameLanguage("Hello, how are you?", "Russian"), false);
+    assert.strictEqual(isLikelySameLanguage("Guten Tag mein Freund", "Russian"), false);
+    assert.strictEqual(isLikelySameLanguage("Bonjour tout le monde", "Russian"), false);
+  });
+
+  it("should recognize Japanese Hiragana/Katakana for Japanese targetLanguage", () => {
+    assert.strictEqual(isLikelySameLanguage("こんにちは、元気ですか？", "Japanese"), true);
+    assert.strictEqual(isLikelySameLanguage("ゲームをしましょう", "Japanese"), true);
+    assert.strictEqual(isLikelySameLanguage("Hello guys", "Japanese"), false);
+  });
+
+  it("should recognize Korean Hangul for Korean targetLanguage", () => {
+    assert.strictEqual(isLikelySameLanguage("안녕하세요 여러분", "Korean"), true);
+    assert.strictEqual(isLikelySameLanguage("Hello world", "Korean"), false);
+  });
+
+  it("should recognize Chinese Hanzi for Chinese targetLanguage", () => {
+    assert.strictEqual(isLikelySameLanguage("你好世界，很高兴认识你", "Chinese"), true);
+    assert.strictEqual(isLikelySameLanguage("Hello guys", "Chinese"), false);
+  });
+
+  it("should ignore Discord mentions, emojis, URLs, and punctuation when checking", () => {
+    assert.strictEqual(
+      isLikelySameLanguage("<@123456789> Привет! <:kek:999> https://discord.com", "Russian"),
+      true,
+    );
+  });
+
+  it("should return false for empty or non-string inputs", () => {
+    assert.strictEqual(isLikelySameLanguage("", "Russian"), false);
+    assert.strictEqual(isLikelySameLanguage(null, "Russian"), false);
+    assert.strictEqual(isLikelySameLanguage("a", "Russian"), false);
+  });
+
+  it("should bypass API call in handleTranslate when isLikelySameLanguage is true", async () => {
+    const res = await handleTranslate("Привет мир!", "Russian", "neutral", false, true);
+    assert.strictEqual(res.isAlreadyTarget, true);
+    assert.strictEqual(res.detectedLanguage, "Russian");
+    assert.strictEqual(res.translation, "Привет мир!");
   });
 });

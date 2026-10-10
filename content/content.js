@@ -46,6 +46,7 @@
       revertBtn: "Отменить",
       errorPrefix: "Ошибка",
       translationFailed: "Не удалось перевести текст",
+      alreadyInTargetLang: "Сообщение уже на целевом языке",
     },
     en: {
       autoBtn: "Auto",
@@ -78,6 +79,7 @@
       revertBtn: "Revert",
       errorPrefix: "Error",
       translationFailed: "Failed to translate text",
+      alreadyInTargetLang: "Message is already in the target language",
     },
   };
 
@@ -95,10 +97,67 @@
 
   function getLangCode(langName) {
     if (!langName) return "EN";
+    const lower = String(langName).toLowerCase().trim();
     const match = SUPPORTED_LANGUAGES.find(
-      (l) => l.name.toLowerCase() === langName.toLowerCase(),
+      (l) => l.name.toLowerCase() === lower || l.code.toLowerCase() === lower,
     );
-    return match ? match.code : langName.slice(0, 2).toUpperCase();
+    if (match) return match.code;
+    return langName.length >= 2 ? langName.slice(0, 2).toUpperCase() : langName.toUpperCase();
+  }
+
+  function isLikelySameLanguage(text, targetLanguage) {
+    if (!text || typeof text !== "string") return false;
+    if (!targetLanguage || typeof targetLanguage !== "string") return false;
+
+    // Clean URLs, mentions, emojis, and punctuation
+    const clean = text
+      .replace(/<@&?\d+>/g, "")
+      .replace(/<#\d+>/g, "")
+      .replace(/<a?:\w+:\d+>/g, "")
+      .replace(/https?:\/\/\S+/gi, "")
+      .replace(/[0-9\s\p{P}\p{S}]/gu, "");
+
+    if (clean.length < 2) return false;
+
+    const target = targetLanguage.toLowerCase().trim();
+
+    // Russian / Ukrainian: check Cyrillic script
+    if (target === "russian" || target === "ukrainian") {
+      const cyrillicMatches = clean.match(/[\u0400-\u04FF]/g) || [];
+      const latinMatches = clean.match(/[a-zA-Z]/g) || [];
+      const total = cyrillicMatches.length + latinMatches.length;
+      if (total >= 2 && cyrillicMatches.length / total >= 0.8) {
+        return true;
+      }
+    }
+
+    // Japanese: Hiragana & Katakana
+    if (target === "japanese") {
+      const kanaMatches = clean.match(/[\u3040-\u309F\u30A0-\u30FF]/g) || [];
+      if (kanaMatches.length >= 2) {
+        return true;
+      }
+    }
+
+    // Korean: Hangul
+    if (target === "korean") {
+      const hangulMatches = clean.match(/[\uAC00-\uD7AF\u1100-\u11FF]/g) || [];
+      if (hangulMatches.length >= 2) {
+        return true;
+      }
+    }
+
+    // Chinese: Han characters without Japanese Kana or Korean Hangul
+    if (target === "chinese") {
+      const hanMatches = clean.match(/[\u4E00-\u9FFF]/g) || [];
+      const kanaMatches = clean.match(/[\u3040-\u309F\u30A0-\u30FF]/g) || [];
+      const hangulMatches = clean.match(/[\uAC00-\uD7AF\u1100-\u11FF]/g) || [];
+      if (hanMatches.length >= 2 && kanaMatches.length === 0 && hangulMatches.length === 0) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   const GEMINI_ICON_SVG = `
@@ -148,6 +207,10 @@
       return false;
     }
     if (/^https?:\/\/\S+$/i.test(rawText.trim())) return false;
+    if (isLikelySameLanguage(rawText, incomingLang)) {
+      contentElement.dataset.dgtAutoTranslated = "true";
+      return false;
+    }
     return true;
   }
 
@@ -231,12 +294,13 @@
       contentElement.dataset.dgtAutoTranslated = "true";
 
       const dict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
+      const targetCode = getLangCode(incomingLang);
       const translationBox = document.createElement("div");
       translationBox.className = "dgt-translation-box dgt-auto-box";
       translationBox.dataset.for = contentElement.id;
       translationBox.innerHTML = `
         <div class="dgt-translation-header">
-          <span class="dgt-translation-title">⚡ Gemini [Auto] (${incomingLang})</span>
+          <span class="dgt-translation-title">⚡ Gemini [Auto] (${targetCode})</span>
           <button type="button" class="dgt-close-btn" title="${dict.closeTitle}">✕</button>
         </div>
         <div class="dgt-translation-text">${dict.translatingText}</div>
@@ -253,9 +317,28 @@
       );
 
       try {
-        const res = await requestTranslation(rawText, incomingLang);
-        textElement.textContent =
-          typeof res === "object" ? res.translatedText : res;
+        const res = await requestTranslation(rawText, incomingLang, {
+          detectLanguage: true,
+        });
+        const fromCode = res.detectedLanguage
+          ? getLangCode(res.detectedLanguage)
+          : "";
+
+        if (res.isAlreadyTarget || (fromCode && fromCode === targetCode)) {
+          translationBox.remove();
+        } else {
+          const langIndicator = fromCode
+            ? `${fromCode} ➔ ${targetCode}`
+            : targetCode;
+          const headerTitleSpan = translationBox.querySelector(
+            ".dgt-translation-title",
+          );
+          if (headerTitleSpan) {
+            headerTitleSpan.textContent = `⚡ Gemini [Auto] (${langIndicator})`;
+          }
+          textElement.textContent =
+            typeof res === "object" ? res.translatedText : res;
+        }
       } catch (err) {
         textElement.className = "dgt-translation-error";
         textElement.textContent = `${dict.errorPrefix}: ${err.message}`;
@@ -339,6 +422,7 @@
           text: text,
           targetLanguage: targetLang,
           includeReverse: Boolean(options.includeReverse),
+          detectLanguage: Boolean(options.detectLanguage ?? true),
         },
         (response) => {
           if (chrome.runtime.lastError) {
@@ -352,6 +436,8 @@
           resolve({
             translatedText: response.translatedText,
             reversePreview: response.reversePreview || "",
+            detectedLanguage: response.detectedLanguage || "",
+            isAlreadyTarget: Boolean(response.isAlreadyTarget),
           });
         },
       );
@@ -450,16 +536,39 @@
         const rawText = getCleanMessageText(contentElement);
         if (!rawText) return;
 
+        const currentDict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
+        const targetCode = getLangCode(incomingLang);
+
+        if (isLikelySameLanguage(rawText, incomingLang)) {
+          const translationBox = document.createElement("div");
+          translationBox.className = "dgt-translation-box";
+          translationBox.dataset.for = contentElement.id;
+          translationBox.innerHTML = `
+            <div class="dgt-translation-header">
+              <span class="dgt-translation-title">${GEMINI_ICON_SVG} Gemini (${targetCode})</span>
+              <button type="button" class="dgt-close-btn" title="${currentDict.closeTitle}">✕</button>
+            </div>
+            <div class="dgt-translation-text">${currentDict.alreadyInTargetLang}</div>
+          `;
+
+          const closeBtn = translationBox.querySelector(".dgt-close-btn");
+          closeBtn.addEventListener("click", () => {
+            translationBox.remove();
+          });
+
+          contentElement.insertAdjacentElement("afterend", translationBox);
+          return;
+        }
+
         btn.classList.add("dgt-loading");
         btn.innerHTML = "⏳";
 
-        const currentDict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
         const translationBox = document.createElement("div");
         translationBox.className = "dgt-translation-box";
         translationBox.dataset.for = contentElement.id;
         translationBox.innerHTML = `
           <div class="dgt-translation-header">
-            <span class="dgt-translation-title">${GEMINI_ICON_SVG} Gemini (${incomingLang})</span>
+            <span class="dgt-translation-title">${GEMINI_ICON_SVG} Gemini (${targetCode})</span>
             <button type="button" class="dgt-close-btn" title="${currentDict.closeTitle}">✕</button>
           </div>
           <div class="dgt-translation-text">${currentDict.translatingText}</div>
@@ -476,9 +585,31 @@
         );
 
         try {
-          const res = await requestTranslation(rawText, incomingLang);
-          textElement.textContent =
-            typeof res === "object" ? res.translatedText : res;
+          const res = await requestTranslation(rawText, incomingLang, {
+            detectLanguage: true,
+          });
+          const fromCode = res.detectedLanguage
+            ? getLangCode(res.detectedLanguage)
+            : "";
+          const headerTitleSpan = translationBox.querySelector(
+            ".dgt-translation-title",
+          );
+
+          if (res.isAlreadyTarget || (fromCode && fromCode === targetCode)) {
+            if (headerTitleSpan) {
+              headerTitleSpan.innerHTML = `${GEMINI_ICON_SVG} Gemini (${targetCode})`;
+            }
+            textElement.textContent = currentDict.alreadyInTargetLang;
+          } else {
+            const langIndicator = fromCode
+              ? `${fromCode} ➔ ${targetCode}`
+              : targetCode;
+            if (headerTitleSpan) {
+              headerTitleSpan.innerHTML = `${GEMINI_ICON_SVG} Gemini (${langIndicator})`;
+            }
+            textElement.textContent =
+              typeof res === "object" ? res.translatedText : res;
+          }
         } catch (error) {
           textElement.className = "dgt-translation-error";
           textElement.textContent = `${currentDict.errorPrefix}: ${error.message}`;
@@ -968,12 +1099,29 @@
 
   let currentTurnCaption = "";
 
+  function cleanStutterRepetitions(text) {
+    if (!text || typeof text !== "string") return "";
+    // Устраняем зацикленные артефакты ASR/LLM, когда одно слово повторяется 3+ раз подряд (с поддержкой Юникода)
+    return text.replace(/(^|\s+)(\S+)(?:\s+\2){2,}(?=\s+|$)/gi, "$1$2");
+  }
+
   function mergeStreamingText(existing, incoming) {
-    if (!existing) return incoming;
-    if (!incoming) return existing;
-    if (incoming.startsWith(existing)) return incoming;
-    if (existing.endsWith(incoming)) return existing;
-    return existing + incoming;
+    if (!existing) return cleanStutterRepetitions(incoming);
+    if (!incoming) return cleanStutterRepetitions(existing);
+    if (incoming.startsWith(existing)) return cleanStutterRepetitions(incoming);
+    if (existing.endsWith(incoming)) return cleanStutterRepetitions(existing);
+
+    // Проверяем перекрытие окончания existing и начала incoming
+    const maxOverlap = Math.min(existing.length, incoming.length);
+    for (let len = maxOverlap; len > 0; len--) {
+      if (existing.endsWith(incoming.slice(0, len))) {
+        return cleanStutterRepetitions(existing + incoming.slice(len));
+      }
+    }
+
+    const needsSpace =
+      !/[\s\p{P}]$/u.test(existing) && !/^[\s\p{P}]/u.test(incoming);
+    return cleanStutterRepetitions(existing + (needsSpace ? " " : "") + incoming);
   }
 
   function handleIncomingLiveCaption(text, isTurnComplete) {
@@ -1290,9 +1438,12 @@
       isAutoTranslateActiveForChannel,
       shouldAutoTranslateMessage,
       handleIncomingLiveCaption,
+      mergeStreamingText,
+      cleanStutterRepetitions,
       toggleLiveCaptionsSession,
       startLiveCaptionsSession,
       stopLiveCaptionsSession,
+      isLikelySameLanguage,
     };
   }
 })();
