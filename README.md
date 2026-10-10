@@ -7,6 +7,7 @@
 <p align="center">
   <a href="https://developer.chrome.com/docs/extensions/develop"><img src="https://img.shields.io/badge/Chrome%20Extension-Manifest%20V3-blue?logo=googlechrome" alt="Manifest V3" /></a>
   <a href="https://ai.google.dev/"><img src="https://img.shields.io/badge/Google%20Gemini-API%20v1beta-4285F4?logo=google" alt="Gemini API" /></a>
+  <a href="#-testing"><img src="https://img.shields.io/badge/tests-87%20passed-brightgreen?logo=node.js" alt="Tests: 87 passed" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" /></a>
 </p>
 
@@ -22,6 +23,13 @@
 
 ## ✨ Features
 
+- 🎙️ **Real-Time Voice Channel Subtitles (Live Captions)**:
+  - Direct low-latency WebRTC audio track interception for voice channel participants.
+  - Streaming speech recognition and translation powered by **Gemini Multimodal Live API** (WebSocket).
+  - Built-in local **VAD (Voice Activity Detection)**: filters background silence and transmits audio only when speech is detected, preserving Google AI Studio free tier quotas.
+  - Dedicated Live model selector (Flash/Live) in extension settings, independent of text chat models.
+  - Draggable, glassmorphic floating subtitles overlay with auto-fadeout of completed phrases after 7 seconds.
+  - Quick toggle button `[🎙️ Subtitles]` embedded in both the Discord voice status panel and input bar.
 - 📥 **Translate Incoming Messages**:
   - Direct translation button on every message and quote/reply in the chat.
   - Clean inline translation bubble right below the original text, dismissable in one click.
@@ -102,21 +110,53 @@ No build steps or dependencies required. Runs natively on pure JavaScript (Manif
 
 ```text
 discord-gemini-translator/
-├── manifest.json              # Extension Manifest V3 configuration
-├── assets/                    # Project screenshots and promotional artwork
-│   └── settings.png           # Extension settings interface preview
-├── icons/                     # Extension icons (16x16, 48x48, 128x128 px and source SVG)
-├── popup/                     # Extension settings modal
-│   ├── popup.html             # Acrylic markup with language switchers
-│   ├── popup.css              # Glassmorphic and neon aesthetic styles
-│   └── popup.js               # EN/RU i18n, model loader, storage sync
-├── background/                # Service worker
-│   └── background.js          # Secure Gemini API caller with thinking budget management
-└── content/                   # Discord DOM integration scripts
-    ├── content.js             # Button injections and translation controller
-    ├── content.css            # Styles for Discord translation boxes & buttons
-    └── inject.js              # Direct bridge for React Slate Editor mutations
+├── manifest.json                  # Extension Manifest V3 configuration
+├── GEMINI.md                      # Mandatory development rules & guidelines for AI agents
+├── assets/                        # Project screenshots and promotional artwork
+│   └── settings.png               # Extension settings interface preview
+├── icons/                         # Extension icons (16x16, 48x48, 128x128 px and source SVG)
+├── popup/                         # Extension settings modal
+│   ├── popup.html                 # Acrylic markup with data-i18n attributes
+│   ├── popup.css                  # Glassmorphic and neon aesthetic styles
+│   └── popup.js                   # EN/RU i18n, model loader, storage sync
+├── background/                    # Service worker
+│   └── background.js              # REST v1beta + WebSocket Gemini Multimodal Live API
+├── content/                       # Discord DOM integration scripts
+│   ├── content.js                 # Button injections, chat observer & captions overlay (ISOLATED)
+│   ├── content.css                # Scoped styles for Discord UI (.dgt-*)
+│   └── inject.js                  # WebRTC audio capture, VAD, PCM 16kHz & Slate.js hooks (MAIN)
+└── tests/                         # Automated test suite (Native Node.js test runner)
+    ├── i18n-no-hardcode.test.js   # Audit preventing unlocalized UI text & dictionary leaks
+    ├── live-captions.test.js      # WebSocket Live API protocol & sentence aggregation
+    ├── inject-audio.test.js       # Audio downsampling to PCM 16kHz, VAD & Base64 encoding
+    ├── background.test.js         # Service worker, REST requests, LRU caching & errors
+    ├── content.test.js            # Chat integration, Slate editor replacement & selectors
+    └── popup.test.js              # Settings validation & model filtering
 ```
+
+---
+
+## 🧪 Testing
+
+The project has comprehensive automated test coverage built on the native Node.js test runner (`node:test` + `node:assert/strict`) with **zero third-party test dependencies**:
+
+```bash
+npm test
+```
+
+### Coverage across 87 tests:
+- 🌐 **UI Localization & Anti-Hardcode (`i18n-no-hardcode.test.js`)**: ensures all HTML elements have `data-i18n` attributes, verifies 100% key parity between RU and EN, guarantees zero Cyrillic characters in English dictionaries, and statically audits JS files against raw string DOM assignments.
+- 🎙️ **Streaming Live Captions (`live-captions.test.js`)**: validates WebSocket messages, modality configuration, thought part filtering (`thought: true`), and sentence completion upon `turnComplete`.
+- 🔊 **Audio Capture & VAD (`inject-audio.test.js`)**: verifies WebRTC audio downsampling from 48 kHz to 16 kHz (16-bit mono PCM), RMS threshold calculations to cut silence, and Base64 chunking.
+- ⚡ **Background Services & Cache (`background.test.js`)**: tests REST endpoints, `thinkingBudget: 0` enforcement, LRU translation cache eviction, and model list sanitization.
+- 💬 **Discord Integration (`content.test.js`)**: verifies Slate.js editor text replacement without focus loss, channel auto-translation queues, and UI overlay containers.
+- ⚙️ **Popup Window (`popup.test.js`)**: validates separation of text vs live models, options persistence, and storage synchronization.
+
+---
+
+## 📋 Development Guidelines
+
+All developers and AI agents must follow the repository standards documented in [[GEMINI.md](GEMINI.md)]. It establishes strict rules against hardcoded strings, requires `dgt-*` scoped CSS, specifies Slate.js integration requirements, and provides a Definition of Done checklist.
 
 ---
 

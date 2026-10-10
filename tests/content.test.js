@@ -7,6 +7,7 @@ const {
   getCleanMessageText,
   getLangCode,
   SUPPORTED_LANGUAGES,
+  CONTENT_I18N,
   getCurrentChannelId,
   isAutoTranslateActiveForChannel,
   shouldAutoTranslateMessage,
@@ -186,5 +187,33 @@ describe("Content Script - Channel Auto-Translate", () => {
       parentElement: { querySelector: (sel) => sel.includes("msg-3") ? {} : null },
     };
     assert.strictEqual(shouldAutoTranslateMessage(hasBox, "Hi", true), false);
+  });
+});
+
+describe("Content Script - UI Localization (CONTENT_I18N)", () => {
+  it("should have matching dictionary keys for both RU and EN", () => {
+    assert.ok(CONTENT_I18N.ru, "RU dictionary must exist");
+    assert.ok(CONTENT_I18N.en, "EN dictionary must exist");
+
+    const ruKeys = Object.keys(CONTENT_I18N.ru).sort();
+    const enKeys = Object.keys(CONTENT_I18N.en).sort();
+    assert.deepStrictEqual(ruKeys, enKeys, "All keys must match between RU and EN");
+  });
+
+  it("should provide clean single-line button labels without appending (ВКЛ) or (ON)", () => {
+    assert.strictEqual(CONTENT_I18N.ru.voiceBtn, "Голос");
+    assert.strictEqual(CONTENT_I18N.en.voiceBtn, "Live");
+    assert.strictEqual(CONTENT_I18N.ru.autoBtn, "Авто");
+    assert.strictEqual(CONTENT_I18N.en.autoBtn, "Auto");
+
+    assert.ok(!CONTENT_I18N.ru.voiceBtn.includes("ВКЛ"), "voiceBtn must not include (ВКЛ)");
+    assert.ok(!CONTENT_I18N.en.voiceBtn.includes("ON"), "voiceBtn must not include (ON)");
+  });
+
+  it("should have localized tooltips for active and inactive states", () => {
+    assert.ok(CONTENT_I18N.ru.voiceTitleActive.includes("ВКЛ"));
+    assert.ok(CONTENT_I18N.ru.voiceTitleInactive.includes("ВЫКЛ"));
+    assert.ok(CONTENT_I18N.en.voiceTitleActive.includes("ON"));
+    assert.ok(CONTENT_I18N.en.voiceTitleInactive.includes("OFF"));
   });
 });

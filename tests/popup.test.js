@@ -1,7 +1,11 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { translations, filterValidModels } = require("../popup/popup.js");
+const {
+  translations,
+  filterValidModels,
+  filterLiveModels,
+} = require("../popup/popup.js");
 
 describe("Popup - i18n Localization Integrity", () => {
   it("should have matching top-level keys in both RU and EN dictionaries", () => {
@@ -48,5 +52,22 @@ describe("Popup - Model Filtering", () => {
     assert.strictEqual(filtered.length, 2);
     assert.strictEqual(filtered[0].name, "models/gemini-2.5-flash-lite");
     assert.strictEqual(filtered[1].name, "models/gemini-2.5-flash");
+  });
+
+  it("should filter dedicated Live models list for popup liveModelSelect", () => {
+    const rawList = [
+      { name: "models/gemini-3.8-live", displayName: "Gemini 3.8 Live" },
+      { name: "models/gemini-3.5-transcribe-live", displayName: "Gemini 3.5 Transcribe Live" },
+      { name: "models/gemini-3.8-flash", displayName: "Gemini 3.8 Flash" },
+      { name: "models/gemini-3.1-flash-lite", displayName: "Gemini 3.1 Flash Lite" },
+      { name: "models/gemini-2.5-flash", displayName: "Gemini 2.5 Flash" },
+      { name: "models/gemini-2.5-pro", displayName: "Gemini 2.5 Pro" },
+      { name: "models/imagen-3", displayName: "Imagen 3" },
+    ];
+
+    const liveList = filterLiveModels(rawList);
+    assert.strictEqual(liveList.length, 2);
+    assert.strictEqual(liveList[0].name, "models/gemini-3.8-live");
+    assert.strictEqual(liveList[1].name, "models/gemini-3.5-transcribe-live");
   });
 });

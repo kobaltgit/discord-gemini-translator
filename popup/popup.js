@@ -5,8 +5,10 @@ const translations = {
     apiKeyPlaceholder: "AIzaSy...",
     toggleApiKeyTitle: "Показать/скрыть ключ",
     fetchModelsBtn: "Загрузить список моделей",
-    modelSelectLabel: "Модель Gemini:",
+    modelSelectLabel: "Модель Gemini (Текстовый чат):",
     modelSelectPlaceholder: "Сначала загрузите модели по API-ключу",
+    liveModelSelectLabel: "Модель Live-субтитров (Голосовые каналы):",
+    liveModelSelectPlaceholder: "Сначала загрузите модели по API-ключу",
     incomingLangLabel: "Входящие:",
     outgoingLangLabel: "Исходящие:",
     toneSelectLabel: "Стиль перевода:",
@@ -49,8 +51,10 @@ const translations = {
     apiKeyPlaceholder: "AIzaSy...",
     toggleApiKeyTitle: "Show/hide API key",
     fetchModelsBtn: "Load Models List",
-    modelSelectLabel: "Gemini Model:",
+    modelSelectLabel: "Gemini Model (Text Chat):",
     modelSelectPlaceholder: "Load models with your API key first",
+    liveModelSelectLabel: "Live Subtitles Model (Voice Channels):",
+    liveModelSelectPlaceholder: "Load models with your API key first",
     incomingLangLabel: "Incoming:",
     outgoingLangLabel: "Outgoing:",
     toneSelectLabel: "Translation Tone:",
@@ -113,11 +117,72 @@ function filterValidModels(models) {
   });
 }
 
+function filterLiveModels(models) {
+  const fallback = [
+    { name: "models/gemini-3.8-live", displayName: "Gemini 3.8 Live" },
+    { name: "models/gemini-3.5-transcribe-live", displayName: "Gemini 3.5 Transcribe Live" },
+    { name: "models/gemini-3.5-live-translate-preview", displayName: "Gemini 3.5 Live Translate" },
+  ];
+  if (!Array.isArray(models) || models.length === 0) {
+    return fallback;
+  }
+
+  const excluded = [
+    "tts",
+    "embedding",
+    "embed",
+    "imagen",
+    "image",
+    "banana",
+    "robotics",
+    "computer-use",
+    "veo",
+    "aqa",
+    "lyria",
+    "music",
+    "clip",
+    "thinking", // requires non-blocking tool function declarations
+    "3.1-flash", // discontinued preview
+    "native-audio", // discontinued preview
+  ];
+
+  const filtered = models
+    .filter((m) => {
+      if (!m || !m.name) return false;
+      const lower = (m.name + " " + (m.displayName || "")).toLowerCase();
+      if (excluded.some((kw) => lower.includes(kw))) return false;
+      if (!lower.includes("gemini")) return false;
+
+      return (
+        lower.includes("live") ||
+        lower.includes("transcribe")
+      );
+    })
+    .map((m) => ({
+      name: m.name,
+      displayName: m.displayName || m.name.replace("models/", ""),
+    }))
+    .sort((a, b) => {
+      const score = (model) => {
+        const n = model.name.toLowerCase();
+        if (n.includes("3.8-live")) return 1;
+        if (n.includes("3.5-transcribe-live")) return 2;
+        if (n.includes("3.5-transcribe")) return 3;
+        if (n.includes("3.5-live-translate")) return 4;
+        return 5;
+      };
+      return score(a) - score(b);
+    });
+
+  return filtered.length > 0 ? filtered : fallback;
+}
+
 function initPopup() {
   const apiKeyInput = document.getElementById("apiKey");
   const toggleApiKeyBtn = document.getElementById("toggleApiKey");
   const fetchModelsBtn = document.getElementById("fetchModelsBtn");
   const modelSelect = document.getElementById("modelSelect");
+  const liveModelSelect = document.getElementById("liveModelSelect");
   const incomingLangSelect = document.getElementById("incomingLang");
   const outgoingLangSelect = document.getElementById("outgoingLang");
   const toneSelect = document.getElementById("toneSelect");
@@ -131,6 +196,7 @@ function initPopup() {
 
   let currentUiLang = "ru";
   let cachedModels = [];
+  let cachedLiveModels = [];
 
   // Switch UI Language
   function setUiLanguage(lang) {
@@ -164,10 +230,15 @@ function initPopup() {
       apiKeyInput.placeholder = dict.apiKeyPlaceholder;
     }
 
-    // Model select placeholder option if empty
+    // Model select placeholder options if empty
     if (modelSelect && modelSelect.options.length <= 1 && modelSelect.disabled) {
       if (modelSelect.options[0]) {
         modelSelect.options[0].textContent = dict.modelSelectPlaceholder;
+      }
+    }
+    if (liveModelSelect && liveModelSelect.options.length <= 1 && liveModelSelect.disabled) {
+      if (liveModelSelect.options[0]) {
+        liveModelSelect.options[0].textContent = dict.liveModelSelectPlaceholder;
       }
     }
 
@@ -233,6 +304,7 @@ function initPopup() {
   saveBtn.addEventListener("click", () => {
     const apiKey = apiKeyInput.value.trim();
     const selectedModel = modelSelect.value;
+    const selectedLiveModel = liveModelSelect ? liveModelSelect.value : "";
     const incomingLang = incomingLangSelect.value;
     const outgoingLang = outgoingLangSelect.value;
     const selectedTone = toneSelect ? toneSelect.value : "neutral";
@@ -258,12 +330,14 @@ function initPopup() {
       {
         geminiApiKey: apiKey,
         geminiModel: selectedModel,
+        geminiLiveModel: selectedLiveModel,
         incomingLang: incomingLang,
         outgoingLang: outgoingLang,
         translationTone: selectedTone,
         reversePreviewEnabled: reverseEnabled,
         autoTranslateEnabled: autoTranslateEnabled,
         savedModelsList: cachedModels,
+        savedLiveModelsList: cachedLiveModels,
         uiLang: currentUiLang,
       },
       () => {
@@ -277,6 +351,7 @@ function initPopup() {
       [
         "geminiApiKey",
         "geminiModel",
+        "geminiLiveModel",
         "incomingLang",
         "outgoingLang",
         "translationTone",
@@ -284,6 +359,7 @@ function initPopup() {
         "autoTranslateEnabled",
         "translationCache",
         "savedModelsList",
+        "savedLiveModelsList",
         "uiLang",
       ],
       (items) => {
@@ -332,6 +408,17 @@ function initPopup() {
           cachedModels = items.savedModelsList;
           renderModelOptions(cachedModels, items.geminiModel);
         }
+
+        if (
+          items.savedLiveModelsList &&
+          Array.isArray(items.savedLiveModelsList) &&
+          items.savedLiveModelsList.length > 0
+        ) {
+          cachedLiveModels = items.savedLiveModelsList;
+          renderLiveModelOptions(cachedLiveModels, items.geminiLiveModel);
+        } else {
+          renderLiveModelOptions([], items.geminiLiveModel);
+        }
       },
     );
   }
@@ -364,9 +451,15 @@ function initPopup() {
           return;
         }
 
-        cachedModels = response.models;
-        chrome.storage.local.get(["geminiModel"], (items) => {
+        cachedModels = response.textModels || response.models || [];
+        cachedLiveModels =
+          response.voiceModels ||
+          response.liveModels ||
+          filterLiveModels(response.models);
+
+        chrome.storage.local.get(["geminiModel", "geminiLiveModel"], (items) => {
           renderModelOptions(cachedModels, items.geminiModel);
+          renderLiveModelOptions(cachedLiveModels, items.geminiLiveModel);
           showStatus(
             `${dict.modelsFound}: ${cachedModels.length}`,
             "success",
@@ -403,6 +496,30 @@ function initPopup() {
     }
   }
 
+  function renderLiveModelOptions(models, currentSelected) {
+    if (!liveModelSelect) return;
+    const filtered = filterLiveModels(models);
+    cachedLiveModels = filtered;
+    liveModelSelect.innerHTML = "";
+    liveModelSelect.disabled = false;
+
+    filtered.forEach((item) => {
+      const option = document.createElement("option");
+      option.value = item.name;
+      const cleanId = item.name.replace("models/", "");
+      option.textContent = item.displayName.includes(cleanId)
+        ? item.displayName
+        : `${item.displayName} (${cleanId})`;
+      liveModelSelect.appendChild(option);
+    });
+
+    if (currentSelected && filtered.some((m) => m.name === currentSelected)) {
+      liveModelSelect.value = currentSelected;
+    } else if (filtered.length > 0) {
+      liveModelSelect.value = filtered[0].name;
+    }
+  }
+
   function showStatus(text, type) {
     statusMessage.textContent = text;
     statusMessage.className = `status-message show ${type}`;
@@ -417,5 +534,6 @@ if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     translations,
     filterValidModels,
+    filterLiveModels,
   };
 }

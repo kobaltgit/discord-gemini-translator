@@ -8,6 +8,79 @@
   const autoTranslateQueue = [];
   let isQueueProcessing = false;
 
+  let isLiveCaptionsActive = false;
+  let liveCaptionsPort = null;
+  let captionsOverlayElement = null;
+  let currentCaptionLineElement = null;
+  let uiLang = "ru";
+
+  const CONTENT_I18N = {
+    ru: {
+      autoBtn: "Авто",
+      autoTitleActive: "Автоперевод канала: ВКЛ (нажмите для выключения)",
+      autoTitleInactive: "Автоперевод канала: ВЫКЛ (нажмите для включения)",
+      voiceBtn: "Голос",
+      voiceTitleActive: "Перевод голоса в субтитры (Gemini Live): ВКЛ (нажмите для выключения)",
+      voiceTitleInactive: "Перевод голоса в субтитры (Gemini Live): ВЫКЛ (нажмите для включения)",
+      voicePanelBtnActive: "Перевод голоса: ВКЛ",
+      voicePanelBtnInactive: "Перевод голоса (субтитры)",
+      voicePanelTitleActive: "Перевод голоса (субтитры): ВКЛ (нажмите для выключения)",
+      voicePanelTitleInactive: "Перевод голоса (субтитры): ВЫКЛ (нажмите для включения)",
+      overlayTitle: "Субтитры Gemini Live",
+      overlayConnecting: "Подключение...",
+      overlayListening: "Слушаю канал",
+      overlayStopped: "Остановлено",
+      overlayError: "Ошибка",
+      overlayClearTitle: "Очистить субтитры",
+      overlayCloseTitle: "Остановить и закрыть",
+      overlayPlaceholder: "Слушаю голосовой канал... Говорите или ждите участников",
+      overlayCleared: "Субтитры очищены. Слушаю канал...",
+      translateTitle: "Перевести ввод на {lang} (Ctrl + ~)",
+      langBadgeTitle: "Выбор языка перевода",
+      langMenuTitle: "Язык перевода",
+      closeTitle: "Закрыть",
+      translatingText: "Перевод...",
+      translateMsgReplyTitle: "Перевести цитату (Gemini)",
+      translateMsgTitle: "Перевести сообщение (Gemini)",
+      reverseTitle: "🔍 Самопроверка ({code} ➔ {dest}):",
+      revertBtn: "Отменить",
+      errorPrefix: "Ошибка",
+      translationFailed: "Не удалось перевести текст",
+    },
+    en: {
+      autoBtn: "Auto",
+      autoTitleActive: "Channel Auto-translate: ON (click to disable)",
+      autoTitleInactive: "Channel Auto-translate: OFF (click to enable)",
+      voiceBtn: "Live",
+      voiceTitleActive: "Live Voice Captions (Gemini Live): ON (click to disable)",
+      voiceTitleInactive: "Live Voice Captions (Gemini Live): OFF (click to enable)",
+      voicePanelBtnActive: "Voice Captions: ON",
+      voicePanelBtnInactive: "Voice Captions (Live)",
+      voicePanelTitleActive: "Voice Captions: ON (click to disable)",
+      voicePanelTitleInactive: "Voice Captions: OFF (click to enable)",
+      overlayTitle: "Gemini Live Captions",
+      overlayConnecting: "Connecting...",
+      overlayListening: "Listening to channel",
+      overlayStopped: "Stopped",
+      overlayError: "Error",
+      overlayClearTitle: "Clear captions",
+      overlayCloseTitle: "Stop & Close",
+      overlayPlaceholder: "Listening to voice channel... Speak or wait for members",
+      overlayCleared: "Captions cleared. Listening to channel...",
+      translateTitle: "Translate input to {lang} (Ctrl + ~)",
+      langBadgeTitle: "Select translation language",
+      langMenuTitle: "Translation Language",
+      closeTitle: "Close",
+      translatingText: "Translating...",
+      translateMsgReplyTitle: "Translate quote (Gemini)",
+      translateMsgTitle: "Translate message (Gemini)",
+      reverseTitle: "🔍 Reverse check ({code} ➔ {dest}):",
+      revertBtn: "Revert",
+      errorPrefix: "Error",
+      translationFailed: "Failed to translate text",
+    },
+  };
+
   const SUPPORTED_LANGUAGES = [
     { code: "EN", name: "English" },
     { code: "RU", name: "Russian" },
@@ -85,11 +158,16 @@
       autoTranslateEnabled,
       autoTranslateChannels,
     );
+    const dict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
     document.querySelectorAll(".dgt-auto-btn").forEach((btn) => {
       btn.classList.toggle("active", isActive);
+      const textSpan = btn.querySelector(".dgt-auto-text");
+      if (textSpan) {
+        textSpan.textContent = dict.autoBtn;
+      }
       btn.title = isActive
-        ? "Автоперевод канала: ВКЛ (нажмите для выключения)"
-        : "Автоперевод канала: ВЫКЛ (нажмите для включения)";
+        ? dict.autoTitleActive
+        : dict.autoTitleInactive;
     });
   }
 
@@ -152,15 +230,16 @@
 
       contentElement.dataset.dgtAutoTranslated = "true";
 
+      const dict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
       const translationBox = document.createElement("div");
       translationBox.className = "dgt-translation-box dgt-auto-box";
       translationBox.dataset.for = contentElement.id;
       translationBox.innerHTML = `
         <div class="dgt-translation-header">
           <span class="dgt-translation-title">⚡ Gemini [Auto] (${incomingLang})</span>
-          <button type="button" class="dgt-close-btn" title="Закрыть">✕</button>
+          <button type="button" class="dgt-close-btn" title="${dict.closeTitle}">✕</button>
         </div>
-        <div class="dgt-translation-text">Перевод...</div>
+        <div class="dgt-translation-text">${dict.translatingText}</div>
       `;
 
       const closeBtn = translationBox.querySelector(".dgt-close-btn");
@@ -179,7 +258,7 @@
           typeof res === "object" ? res.translatedText : res;
       } catch (err) {
         textElement.className = "dgt-translation-error";
-        textElement.textContent = `Ошибка: ${err.message}`;
+        textElement.textContent = `${dict.errorPrefix}: ${err.message}`;
       }
 
       await new Promise((r) => setTimeout(r, 350));
@@ -197,6 +276,7 @@
         "reversePreviewEnabled",
         "autoTranslateEnabled",
         "autoTranslateChannels",
+        "uiLang",
       ],
       (items) => {
         if (items.incomingLang) incomingLang = items.incomingLang;
@@ -213,7 +293,10 @@
         ) {
           autoTranslateChannels = items.autoTranslateChannels;
         }
-        updateAllAutoButtons();
+        if (items.uiLang) {
+          uiLang = items.uiLang;
+        }
+        updateAllContentUiTexts();
         checkAndAutoTranslateMessages();
       },
     );
@@ -222,7 +305,10 @@
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName === "local") {
         if (changes.incomingLang) incomingLang = changes.incomingLang.newValue;
-        if (changes.outgoingLang) outgoingLang = changes.outgoingLang.newValue;
+        if (changes.outgoingLang) {
+          outgoingLang = changes.outgoingLang.newValue;
+          updateAllContentUiTexts();
+        }
         if (changes.reversePreviewEnabled) {
           reversePreviewEnabled = changes.reversePreviewEnabled.newValue;
         }
@@ -235,6 +321,10 @@
           autoTranslateChannels = changes.autoTranslateChannels.newValue || {};
           updateAllAutoButtons();
           checkAndAutoTranslateMessages();
+        }
+        if (changes.uiLang) {
+          uiLang = changes.uiLang.newValue || "ru";
+          updateAllContentUiTexts();
         }
       }
     });
@@ -319,25 +409,30 @@
 
   function attachIncomingButtons() {
     const contentElements = document.querySelectorAll(
-      '[id^="message-content-"]',
+      '[id^="message-content-"], [class*="messageContent_"], [class*="messageContent-"]',
     );
 
     contentElements.forEach((contentElement) => {
-      if (contentElement.dataset.dgtProcessed === "true") {
+      // Если кнопка уже прикреплена к данному элементу сообщения, пропускаем
+      if (contentElement.querySelector(".dgt-translate-msg-btn")) {
         return;
       }
 
-      contentElement.dataset.dgtProcessed = "true";
+      // Гарантируем наличие id для привязки блока перевода
+      if (!contentElement.id) {
+        contentElement.id = `message-content-dgt-${Math.random().toString(36).slice(2, 9)}`;
+      }
 
       const isReply = Boolean(
         contentElement.closest('[class*="repliedMessage"]'),
       );
 
+      const dict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
       const btn = document.createElement("button");
       btn.className = `dgt-translate-msg-btn ${isReply ? "dgt-reply-btn" : "dgt-main-btn"}`;
       btn.title = isReply
-        ? "Перевести цитату (Gemini)"
-        : "Перевести сообщение (Gemini)";
+        ? dict.translateMsgReplyTitle
+        : dict.translateMsgTitle;
       btn.type = "button";
       btn.innerHTML = GEMINI_ICON_SVG;
 
@@ -358,15 +453,16 @@
         btn.classList.add("dgt-loading");
         btn.innerHTML = "⏳";
 
+        const currentDict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
         const translationBox = document.createElement("div");
         translationBox.className = "dgt-translation-box";
         translationBox.dataset.for = contentElement.id;
         translationBox.innerHTML = `
           <div class="dgt-translation-header">
             <span class="dgt-translation-title">${GEMINI_ICON_SVG} Gemini (${incomingLang})</span>
-            <button type="button" class="dgt-close-btn" title="Закрыть">✕</button>
+            <button type="button" class="dgt-close-btn" title="${currentDict.closeTitle}">✕</button>
           </div>
-          <div class="dgt-translation-text">Перевод...</div>
+          <div class="dgt-translation-text">${currentDict.translatingText}</div>
         `;
 
         const closeBtn = translationBox.querySelector(".dgt-close-btn");
@@ -385,7 +481,7 @@
             typeof res === "object" ? res.translatedText : res;
         } catch (error) {
           textElement.className = "dgt-translation-error";
-          textElement.textContent = `Ошибка: ${error.message}`;
+          textElement.textContent = `${currentDict.errorPrefix}: ${error.message}`;
         } finally {
           btn.classList.remove("dgt-loading");
           btn.innerHTML = GEMINI_ICON_SVG;
@@ -401,6 +497,7 @@
         autoTranslateChannels,
       );
 
+      const rawText = getCleanMessageText(contentElement);
       if (
         isChannelActive &&
         shouldAutoTranslateMessage(contentElement, rawText, isChannelActive)
@@ -424,13 +521,17 @@
     // Удаляем предыдущую плашку если есть
     container.querySelectorAll(".dgt-reverse-box").forEach((el) => el.remove());
 
+    const dict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
     const previewBox = document.createElement("div");
     previewBox.className = "dgt-reverse-box";
+    const headerTitle = dict.reverseTitle
+      .replace("{code}", getLangCode(outgoingLang))
+      .replace("{dest}", getLangCode(incomingLang));
     previewBox.innerHTML = `
       <div class="dgt-reverse-header">
-        <span class="dgt-reverse-title">🔍 Самопроверка (${getLangCode(outgoingLang)} ➔ RU):</span>
+        <span class="dgt-reverse-title">${headerTitle}</span>
         <div class="dgt-reverse-actions">
-          <button type="button" class="dgt-revert-btn">Отменить</button>
+          <button type="button" class="dgt-revert-btn">${dict.revertBtn}</button>
           <button type="button" class="dgt-close-preview-btn">✕</button>
         </div>
       </div>
@@ -489,19 +590,20 @@
       return;
     }
 
+    const dict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
     const wrapper = document.createElement("div");
     wrapper.className = "dgt-outgoing-wrapper";
 
     const outgoingBtn = document.createElement("button");
     outgoingBtn.className = "dgt-chat-input-btn";
     outgoingBtn.type = "button";
-    outgoingBtn.title = `Перевести ввод на ${outgoingLang} (Ctrl + ~)`;
+    outgoingBtn.title = dict.translateTitle.replace("{lang}", outgoingLang);
     outgoingBtn.innerHTML = GEMINI_ICON_SVG;
 
     const langBadge = document.createElement("button");
     langBadge.type = "button";
     langBadge.className = "dgt-lang-badge";
-    langBadge.title = "Выбор языка перевода";
+    langBadge.title = dict.langBadgeTitle;
     langBadge.innerHTML = `<span>${getLangCode(outgoingLang)}</span><span class="dgt-badge-arrow">▾</span>`;
 
     let activeMenu = null;
@@ -531,9 +633,10 @@
       const menu = document.createElement("div");
       menu.className = "dgt-lang-menu";
 
+      const currentDict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
       const title = document.createElement("div");
       title.className = "dgt-lang-menu-title";
-      title.textContent = "Язык перевода";
+      title.textContent = currentDict.langMenuTitle;
       menu.appendChild(title);
 
       SUPPORTED_LANGUAGES.forEach((lang) => {
@@ -555,7 +658,8 @@
           ev.stopPropagation();
           outgoingLang = lang.name;
           langBadge.querySelector("span").textContent = lang.code;
-          outgoingBtn.title = `Перевести ввод на ${outgoingLang} (Ctrl + ~)`;
+          const dict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
+          outgoingBtn.title = dict.translateTitle.replace("{lang}", outgoingLang);
           chrome.storage.local.set({ outgoingLang: lang.name });
           closeMenu();
         });
@@ -632,7 +736,8 @@
           );
         }
       } catch (err) {
-        alert(`Не удалось перевести текст: ${err.message}`);
+        const dict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
+        alert(`${dict.translationFailed}: ${err.message}`);
       } finally {
         outgoingBtn.classList.remove("dgt-loading");
       }
@@ -652,7 +757,7 @@
     const autoBtn = document.createElement("button");
     autoBtn.type = "button";
     autoBtn.className = "dgt-auto-btn";
-    autoBtn.innerHTML = `<span>⚡</span><span class="dgt-auto-text">Авто</span>`;
+    autoBtn.innerHTML = `<span>⚡</span><span class="dgt-auto-text">${dict.autoBtn}</span>`;
 
     const currentChId = getCurrentChannelId();
     const isAutoActive = isAutoTranslateActiveForChannel(
@@ -662,9 +767,9 @@
     );
     if (isAutoActive) {
       autoBtn.classList.add("active");
-      autoBtn.title = "Автоперевод канала: ВКЛ (нажмите для выключения)";
+      autoBtn.title = dict.autoTitleActive;
     } else {
-      autoBtn.title = "Автоперевод канала: ВЫКЛ (нажмите для включения)";
+      autoBtn.title = dict.autoTitleInactive;
     }
 
     autoBtn.addEventListener("mousedown", (e) => e.preventDefault());
@@ -693,6 +798,25 @@
     wrapper.appendChild(outgoingBtn);
     wrapper.appendChild(langBadge);
     wrapper.appendChild(autoBtn);
+
+    const voiceBtn = document.createElement("button");
+    voiceBtn.type = "button";
+    voiceBtn.className = "dgt-voice-subtitles-btn";
+    voiceBtn.innerHTML = `<span>🎙️</span><span class="dgt-voice-text">${dict.voiceBtn}</span>`;
+    voiceBtn.title = isLiveCaptionsActive
+      ? dict.voiceTitleActive
+      : dict.voiceTitleInactive;
+    if (isLiveCaptionsActive) {
+      voiceBtn.classList.add("active");
+    }
+    voiceBtn.addEventListener("mousedown", (e) => e.preventDefault());
+    voiceBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleLiveCaptionsSession();
+    });
+    wrapper.appendChild(voiceBtn);
+
     buttonContainer.prepend(wrapper);
 
     if (slateEditor.dataset.dgtKeybound !== "true") {
@@ -704,6 +828,404 @@
         }
       });
     }
+  }
+
+  function attachVoicePanelButton() {
+    if (typeof document === "undefined") return;
+    const rtcEl = document.querySelector(
+      '[class*="rtcConnectionStatus"], [class*="connection_"], [class*="voiceUsers_"], button[aria-label*="Отключиться"], button[aria-label*="Disconnect"]',
+    );
+    if (!rtcEl) return;
+
+    // Ищем карточку голосового подключения (над профилем пользователя в левом сайдбаре)
+    const voiceCard =
+      rtcEl.closest('[class*="container_"]') ||
+      rtcEl.closest('section[class*="panels_"] > div') ||
+      rtcEl.parentElement;
+    if (!voiceCard) return;
+
+    // Игнорируем карточку профиля пользователя
+    if (voiceCard.querySelector('[class*="avatar_"], [class*="accountProfile_"]')) {
+      return;
+    }
+
+    if (voiceCard.querySelector(".dgt-voice-panel-btn")) return;
+
+    // Удаляем случайные дубликаты
+    document
+      .querySelectorAll(".panels_ > .dgt-voice-panel-btn, section > .dgt-voice-panel-btn")
+      .forEach((el) => el.remove());
+
+    const dict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "dgt-voice-panel-btn";
+    btn.innerHTML = `<span class="dgt-voice-btn-icon">🎙️</span><span class="dgt-voice-btn-text">${
+      isLiveCaptionsActive ? dict.voicePanelBtnActive : dict.voicePanelBtnInactive
+    }</span>`;
+    btn.title = isLiveCaptionsActive
+      ? dict.voicePanelTitleActive
+      : dict.voicePanelTitleInactive;
+    if (isLiveCaptionsActive) {
+      btn.classList.add("active");
+    }
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleLiveCaptionsSession();
+    });
+
+    voiceCard.appendChild(btn);
+  }
+
+  function makeElementDraggable(element, handle) {
+    if (!element || !handle) return;
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let origLeft = 0;
+    let origTop = 0;
+
+    handle.addEventListener("mousedown", (e) => {
+      if (e.target.closest("button")) return;
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = element.getBoundingClientRect();
+      origLeft = rect.left;
+      origTop = rect.top;
+      element.style.left = `${origLeft}px`;
+      element.style.top = `${origTop}px`;
+      element.style.bottom = "auto";
+      element.style.transform = "none";
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
+
+    function onMouseMove(e) {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      element.style.left = `${Math.max(10, Math.min(window.innerWidth - element.offsetWidth - 10, origLeft + dx))}px`;
+      element.style.top = `${Math.max(10, Math.min(window.innerHeight - element.offsetHeight - 10, origTop + dy))}px`;
+    }
+
+    function onMouseUp() {
+      isDragging = false;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    }
+  }
+
+  function createCaptionsOverlay() {
+    if (typeof document === "undefined") return null;
+    let overlay = document.getElementById("dgtCaptionsOverlay");
+    if (overlay) return overlay;
+
+    const dict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
+    overlay = document.createElement("div");
+    overlay.id = "dgtCaptionsOverlay";
+    overlay.className = "dgt-captions-overlay";
+    overlay.innerHTML = `
+      <div class="dgt-captions-header" id="dgtCaptionsHeader">
+        <div class="dgt-captions-title">
+          <span class="dgt-pulse-dot connecting" id="dgtCaptionsDot"></span>
+          <span class="dgt-captions-header-label">${dict.overlayTitle}</span>
+          <span class="dgt-captions-status" id="dgtCaptionsStatus">${dict.overlayConnecting}</span>
+        </div>
+        <div class="dgt-captions-actions">
+          <button type="button" class="dgt-captions-action-btn" id="dgtCaptionsClearBtn" title="${dict.overlayClearTitle}">🧹</button>
+          <button type="button" class="dgt-captions-action-btn" id="dgtCaptionsCloseBtn" title="${dict.overlayCloseTitle}">✖</button>
+        </div>
+      </div>
+      <div class="dgt-captions-body" id="dgtCaptionsBody">
+        <div class="dgt-caption-placeholder">${dict.overlayPlaceholder}</div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    overlay.querySelector("#dgtCaptionsCloseBtn")?.addEventListener("click", () => {
+      stopLiveCaptionsSession();
+      overlay.remove();
+      captionsOverlayElement = null;
+    });
+
+    overlay.querySelector("#dgtCaptionsClearBtn")?.addEventListener("click", () => {
+      const body = overlay.querySelector("#dgtCaptionsBody");
+      if (body) {
+        const currentDict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
+        body.innerHTML = `<div class="dgt-caption-placeholder">${currentDict.overlayCleared}</div>`;
+        currentCaptionLineElement = null;
+        currentTurnCaption = "";
+      }
+    });
+
+    makeElementDraggable(overlay, overlay.querySelector("#dgtCaptionsHeader"));
+    captionsOverlayElement = overlay;
+    return overlay;
+  }
+
+  let currentTurnCaption = "";
+
+  function mergeStreamingText(existing, incoming) {
+    if (!existing) return incoming;
+    if (!incoming) return existing;
+    if (incoming.startsWith(existing)) return incoming;
+    if (existing.endsWith(incoming)) return existing;
+    return existing + incoming;
+  }
+
+  function handleIncomingLiveCaption(text, isTurnComplete) {
+    if (!text && !isTurnComplete) return;
+    const overlay = createCaptionsOverlay();
+    if (!overlay) return;
+    const body = overlay.querySelector("#dgtCaptionsBody");
+    if (!body) return;
+
+    const placeholder = body.querySelector(".dgt-caption-placeholder");
+    if (placeholder) placeholder.remove();
+
+    if (text) {
+      if (!currentCaptionLineElement) {
+        currentCaptionLineElement = document.createElement("div");
+        currentCaptionLineElement.className = "dgt-caption-item dgt-caption-active";
+        const textSpan = document.createElement("span");
+        textSpan.className = "dgt-caption-text";
+        currentTurnCaption = text;
+        textSpan.textContent = currentTurnCaption;
+        currentCaptionLineElement.appendChild(textSpan);
+        body.appendChild(currentCaptionLineElement);
+      } else {
+        const textSpan = currentCaptionLineElement.querySelector(".dgt-caption-text");
+        if (textSpan) {
+          currentTurnCaption = mergeStreamingText(currentTurnCaption, text);
+          textSpan.textContent = currentTurnCaption;
+        }
+      }
+      body.scrollTop = body.scrollHeight;
+    }
+
+    if (isTurnComplete && currentCaptionLineElement) {
+      const finishedLine = currentCaptionLineElement;
+      finishedLine.classList.remove("dgt-caption-active");
+      currentCaptionLineElement = null;
+      currentTurnCaption = "";
+
+      // Автоматическое затухание через 7 секунд
+      setTimeout(() => {
+        finishedLine.classList.add("dgt-fade-out");
+        setTimeout(() => {
+          if (finishedLine.parentElement) {
+            finishedLine.remove();
+          }
+        }, 600);
+      }, 7000);
+    }
+  }
+
+  function showOverlaySystemError(errorMsg) {
+    const overlay = createCaptionsOverlay();
+    if (!overlay) return;
+    const body = overlay.querySelector("#dgtCaptionsBody");
+    if (!body) return;
+    const placeholder = body.querySelector(".dgt-caption-placeholder");
+    if (placeholder) placeholder.remove();
+    const errDiv = document.createElement("div");
+    errDiv.className = "dgt-caption-item dgt-caption-error";
+    errDiv.textContent = `⚠️ ${errorMsg}`;
+    body.appendChild(errDiv);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function updateAllContentUiTexts() {
+    if (typeof document === "undefined") return;
+    const dict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
+    updateAllAutoButtons();
+    updateAllVoiceButtons(isLiveCaptionsActive);
+
+    // Update outgoing buttons
+    document.querySelectorAll(".dgt-chat-input-btn").forEach((btn) => {
+      btn.title = dict.translateTitle.replace("{lang}", outgoingLang);
+    });
+
+    // Update lang badge
+    document.querySelectorAll(".dgt-lang-badge").forEach((btn) => {
+      btn.title = dict.langBadgeTitle;
+    });
+
+    // Update message buttons
+    document.querySelectorAll(".dgt-translate-msg-btn").forEach((btn) => {
+      btn.title = btn.classList.contains("dgt-reply-btn")
+        ? dict.translateMsgReplyTitle
+        : dict.translateMsgTitle;
+    });
+
+    // Update overlay if present
+    const overlay = document.getElementById("dgtCaptionsOverlay");
+    if (overlay) {
+      const titleLabel = overlay.querySelector(".dgt-captions-header-label");
+      if (titleLabel) titleLabel.textContent = dict.overlayTitle;
+      const clearBtn = overlay.querySelector("#dgtCaptionsClearBtn");
+      if (clearBtn) clearBtn.title = dict.overlayClearTitle;
+      const closeBtn = overlay.querySelector("#dgtCaptionsCloseBtn");
+      if (closeBtn) closeBtn.title = dict.overlayCloseTitle;
+      const placeholder = overlay.querySelector(".dgt-caption-placeholder");
+      if (placeholder) placeholder.textContent = dict.overlayPlaceholder;
+    }
+  }
+
+  function updateAllVoiceButtons(isActive) {
+    if (typeof document === "undefined") return;
+    const dict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
+    document
+      .querySelectorAll(".dgt-voice-subtitles-btn, .dgt-voice-panel-btn")
+      .forEach((btn) => {
+        btn.classList.toggle("active", isActive);
+        const textSpan = btn.querySelector(
+          ".dgt-voice-text, .dgt-voice-btn-text",
+        );
+        if (textSpan) {
+          if (btn.classList.contains("dgt-voice-panel-btn")) {
+            textSpan.textContent = isActive
+              ? dict.voicePanelBtnActive
+              : dict.voicePanelBtnInactive;
+          } else {
+            textSpan.textContent = dict.voiceBtn;
+          }
+        }
+        btn.title = isActive
+          ? (btn.classList.contains("dgt-voice-panel-btn")
+              ? dict.voicePanelTitleActive
+              : dict.voiceTitleActive)
+          : (btn.classList.contains("dgt-voice-panel-btn")
+              ? dict.voicePanelTitleInactive
+              : dict.voiceTitleInactive);
+      });
+  }
+
+  function startLiveCaptionsSession() {
+    if (isLiveCaptionsActive) return;
+    isLiveCaptionsActive = true;
+    updateAllVoiceButtons(true);
+    const dict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
+    const overlay = createCaptionsOverlay();
+    if (overlay) {
+      const statusEl = overlay.querySelector("#dgtCaptionsStatus");
+      const dotEl = overlay.querySelector("#dgtCaptionsDot");
+      if (statusEl) statusEl.textContent = dict.overlayConnecting;
+      if (dotEl) dotEl.className = "dgt-pulse-dot connecting";
+    }
+
+    if (liveCaptionsPort) {
+      try {
+        liveCaptionsPort.disconnect();
+      } catch {}
+      liveCaptionsPort = null;
+    }
+
+    let hasLiveError = false;
+
+    if (typeof chrome !== "undefined" && chrome.runtime?.connect) {
+      console.log("[DGT Content] Открытие порта dgt-live-captions...");
+      liveCaptionsPort = chrome.runtime.connect({ name: "dgt-live-captions" });
+
+      liveCaptionsPort.onMessage.addListener((msg) => {
+        if (!overlay) return;
+        const statusEl = overlay.querySelector("#dgtCaptionsStatus");
+        const dotEl = overlay.querySelector("#dgtCaptionsDot");
+
+        const currentDict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
+
+        if (msg.type === "LIVE_STATUS") {
+          console.log("[DGT Content] Статус от воркера:", msg.status);
+          if (statusEl) statusEl.textContent = msg.status;
+        } else if (msg.type === "LIVE_CONNECTED") {
+          console.log("[DGT Content] Live сессия готова к переводу");
+          hasLiveError = false;
+          if (statusEl) statusEl.textContent = currentDict.overlayListening;
+          if (dotEl) dotEl.className = "dgt-pulse-dot live";
+        } else if (msg.type === "LIVE_CAPTION") {
+          console.log("[DGT Content] Получен субтитр:", msg.text);
+          hasLiveError = false;
+          if (statusEl) statusEl.textContent = currentDict.overlayListening;
+          if (dotEl) dotEl.className = "dgt-pulse-dot live";
+          handleIncomingLiveCaption(msg.text, msg.isTurnComplete);
+        } else if (msg.type === "LIVE_ERROR") {
+          console.error("[DGT Content] Ошибка Live:", msg.error);
+          hasLiveError = true;
+          if (statusEl) statusEl.textContent = currentDict.overlayError;
+          if (dotEl) dotEl.className = "dgt-pulse-dot error";
+          showOverlaySystemError(msg.error || currentDict.overlayError);
+        } else if (msg.type === "LIVE_CLOSED") {
+          console.warn("[DGT Content] Сессия закрыта сервером:", msg.code, msg.reason);
+          if (isLiveCaptionsActive) {
+            stopLiveCaptionsSession(hasLiveError);
+          }
+        }
+      });
+
+      liveCaptionsPort.onDisconnect.addListener(() => {
+        const lastErr = chrome.runtime?.lastError?.message;
+        console.warn("[DGT Content] Порт закрыт (onDisconnect). Ошибка:", lastErr);
+        if (isLiveCaptionsActive) {
+          if (lastErr) {
+            showOverlaySystemError("Фоновый процесс расширения перезапущен или недоступен: " + lastErr);
+          }
+          stopLiveCaptionsSession(hasLiveError);
+        }
+      });
+
+      console.log("[DGT Content] Отправка START_LIVE...");
+      liveCaptionsPort.postMessage({ type: "START_LIVE" });
+    }
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("DGT_START_VOICE_CAPTURE"));
+    }
+  }
+
+  function stopLiveCaptionsSession(preserveError = false) {
+    isLiveCaptionsActive = false;
+    updateAllVoiceButtons(false);
+    const dict = CONTENT_I18N[uiLang] || CONTENT_I18N.ru;
+    if (captionsOverlayElement && !preserveError) {
+      const statusEl = captionsOverlayElement.querySelector("#dgtCaptionsStatus");
+      const dotEl = captionsOverlayElement.querySelector("#dgtCaptionsDot");
+      if (statusEl) statusEl.textContent = dict.overlayStopped;
+      if (dotEl) dotEl.className = "dgt-pulse-dot idle";
+    }
+
+    if (liveCaptionsPort) {
+      try {
+        liveCaptionsPort.postMessage({ type: "STOP_LIVE" });
+        liveCaptionsPort.disconnect();
+      } catch {}
+      liveCaptionsPort = null;
+    }
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("DGT_STOP_VOICE_CAPTURE"));
+    }
+  }
+
+  function toggleLiveCaptionsSession() {
+    if (isLiveCaptionsActive) {
+      stopLiveCaptionsSession();
+    } else {
+      startLiveCaptionsSession();
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("DGT_VOICE_AUDIO_CHUNK", (e) => {
+      if (isLiveCaptionsActive && liveCaptionsPort && e.detail?.pcmBase64) {
+        liveCaptionsPort.postMessage({
+          type: "AUDIO_CHUNK",
+          pcmBase64: e.detail.pcmBase64,
+        });
+      }
+    });
   }
 
   function isTildeKey(e) {
@@ -725,13 +1247,18 @@
   // --- НАБЛЮДАТЕЛЬ ЗА ВИРТУАЛЬНЫМ DOM DISCORD ---
 
   let observerTimeout = null;
-  if (typeof document !== "undefined" && document.body) {
+  if (
+    typeof document !== "undefined" &&
+    document.body &&
+    typeof MutationObserver !== "undefined"
+  ) {
     const observer = new MutationObserver(() => {
       if (observerTimeout) return;
       observerTimeout = setTimeout(() => {
         checkChannelChange();
         attachIncomingButtons();
         attachOutgoingButton();
+        attachVoicePanelButton();
         updateAllAutoButtons();
         observerTimeout = null;
       }, 100);
@@ -746,6 +1273,7 @@
     checkChannelChange();
     attachIncomingButtons();
     attachOutgoingButton();
+    attachVoicePanelButton();
     updateAllAutoButtons();
   }
 
@@ -756,9 +1284,15 @@
       getCleanMessageText,
       getLangCode,
       SUPPORTED_LANGUAGES,
+      CONTENT_I18N,
+      updateAllContentUiTexts,
       getCurrentChannelId,
       isAutoTranslateActiveForChannel,
       shouldAutoTranslateMessage,
+      handleIncomingLiveCaption,
+      toggleLiveCaptionsSession,
+      startLiveCaptionsSession,
+      stopLiveCaptionsSession,
     };
   }
 })();

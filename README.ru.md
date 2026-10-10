@@ -7,6 +7,7 @@
 <p align="center">
   <a href="https://developer.chrome.com/docs/extensions/develop"><img src="https://img.shields.io/badge/Chrome%20Extension-Manifest%20V3-blue?logo=googlechrome" alt="Manifest V3" /></a>
   <a href="https://ai.google.dev/"><img src="https://img.shields.io/badge/Google%20Gemini-API%20v1beta-4285F4?logo=google" alt="Gemini API" /></a>
+  <a href="#-тестирование"><img src="https://img.shields.io/badge/tests-87%20passed-brightgreen?logo=node.js" alt="Tests: 87 passed" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" /></a>
 </p>
 
@@ -22,6 +23,13 @@
 
 ## ✨ Возможности
 
+- 🎙️ **Синхронные субтитры голосовых каналов (Live Captions)**:
+  - Прямой захват входящих аудиодорожек участников через WebRTC в реальном времени.
+  - Потоковое распознавание и перевод через **Gemini Multimodal Live API** (WebSocket).
+  - Встроенный локальный **VAD (Voice Activity Detection)**: отсекает тишину и шумы, отправляя аудио только при наличии речи для экономии бесплатных квот API.
+  - Отдельный выбор модели для голосового перевода (Flash/Live) в настройках расширения.
+  - Стильный перетаскиваемый оверлей субтитров с автозатуханием старых фраз через 7 секунд.
+  - Кнопка быстрого включения/выключения `[🎙️ Субтитры]` прямо в голосовой панели и у поля ввода Discord.
 - 📥 **Перевод входящих сообщений**:
   - Иконка перевода возле каждого сообщения в чате и цитатах ответов.
   - Аккуратная плашка с переводом прямо под сообщением, закрываемая в один клик.
@@ -102,21 +110,53 @@
 
 ```text
 discord-gemini-translator/
-├── manifest.json              # Манифест расширения Manifest V3
-├── assets/                    # Скриншоты и материалы проекта
-│   └── settings.png           # Превью окна настроек
-├── icons/                     # Иконки (16x16, 48x48, 128x128 px и векторный SVG)
-├── popup/                     # Всплывающее окно настроек
-│   ├── popup.html             # Разметка с акриловой шапкой и переключателем языков
-│   ├── popup.css              # Стили Glassmorphism со свечениями
-│   └── popup.js               # Локализация RU/EN, загрузка моделей, сохранение
-├── background/                # Фоновый сервис-воркер
-│   └── background.js          # Запросы к Gemini API и точная настройка thinking
-└── content/                   # Скрипты взаимодействия с Discord
-    ├── content.js             # Добавление кнопок перевода и обработка интерфейса
-    ├── content.css            # Стили кнопок и блоков перевода в Discord
-    └── inject.js              # Прямой инжектор для работы с React Slate Editor
+├── manifest.json                  # Манифест расширения Manifest V3
+├── GEMINI.md                      # Обязательный регламент разработки для AI-агентов
+├── assets/                        # Скриншоты и графические промо-материалы
+│   └── settings.png               # Превью окна настроек
+├── icons/                         # Иконки расширения (16x16, 48x48, 128x128 px и SVG)
+├── popup/                         # Окно настроек расширения
+│   ├── popup.html                 # Разметка с акриловой шапкой и i18n атрибутами
+│   ├── popup.css                  # Стили Glassmorphism со свечениями
+│   └── popup.js                   # Локализация RU/EN, загрузка моделей, сохранение
+├── background/                    # Фоновый сервис-воркер
+│   └── background.js              # REST v1beta + WebSocket Gemini Multimodal Live API
+├── content/                       # Скрипты взаимодействия с Discord
+│   ├── content.js                 # Инъекция UI, чат-наблюдатель и оверлей субтитров (ISOLATED)
+│   ├── content.css                # Scoped-стили кнопок и блоков перевода (.dgt-*)
+│   └── inject.js                  # Захват WebRTC звука, VAD, PCM 16kHz & Slate.js (MAIN)
+└── tests/                         # Набор автоматических тестов (Node.js test runner)
+    ├── i18n-no-hardcode.test.js   # Защита от хардкода строк интерфейса и чистота словарей
+    ├── live-captions.test.js      # Протокол WebSocket Live API и сборка предложений
+    ├── inject-audio.test.js       # Аудиоконвертер, VAD и даунсэмплинг PCM 16kHz
+    ├── background.test.js         # Service Worker, REST-запросы, LRU-кэш и ошибки
+    ├── content.test.js            # Интеграция с чатом, замена Slate и селекторы
+    └── popup.test.js              # Валидация настроек и фильтрация моделей
 ```
+
+---
+
+## 🧪 Тестирование
+
+Проект покрыт полным набором автоматических тестов на нативном тестовом фреймворке Node.js (`node:test` + `node:assert/strict`) **без тяжелых сторонних npm-зависимостей**:
+
+```bash
+npm test
+```
+
+### Что проверяют 87 тестов:
+- 🌐 **Защита от хардкода интерфейса (`i18n-no-hardcode.test.js`)**: гарантирует наличие атрибутов `data-i18n` у всех элементов интерфейса, полное соответствие словарей RU/EN, отсутствие кириллицы в английской локали и блокирует прямое присвоение строк в свойства DOM (`textContent`, `title`, `alert`).
+- 🎙️ **Потоковые Live-субтитры (`live-captions.test.js`)**: проверяет WebSocket-сообщения Gemini Multimodal Live API, приоритет транскрипций, фильтрацию скрытых мыслей модели (`thought: true`) и фиксацию реплик по флагу `turnComplete`.
+- 🔊 **Захват звука и VAD (`inject-audio.test.js`)**: тестирует даунсэмплинг WebRTC аудиопотока из 48 кГц в 16 кГц, расчёт порога громкости RMS для отсечения тишины и упаковку в Base64 PCM 16-bit.
+- ⚡ **Фоновые сервисы и кэш (`background.test.js`)**: проверяет REST-запросы, отключение бюджета рассуждений `thinkingBudget: 0`, работу LRU-кэша и фильтрацию моделей.
+- 💬 **Интеграция с Discord DOM (`content.test.js`)**: проверяет подстановку текста через Slate.js, очереди автоперевода и работу контекстных плашек.
+- ⚙️ **Окно настроек (`popup.test.js`)**: проверяет разделение текстовых и голосовых моделей, синхронизацию настроек и сохранение API-ключа.
+
+---
+
+## 📋 Регламент разработки
+
+Для разработчиков и AI-агентов создан строгий регламент разработки: [[GEMINI.md](GEMINI.md)]. В нём зафиксированы обязательные правила: архитектурные стандарты, предотвращение регрессий, изоляция стилей `dgt-*` и чеклист перед сдачей задач.
 
 ---
 
