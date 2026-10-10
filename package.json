@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Chrome extension for real-time Discord translation via Google Gemini API",
   "scripts": {
-    "test": "node --test tests/**/*.test.js"
+    "test": "node --test tests/**/*.test.js",
+    "pack": "node scripts/pack.js"
   },
   "author": "Kobalt",
   "license": "MIT"

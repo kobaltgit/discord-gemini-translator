@@ -6,8 +6,7 @@
   "permissions": ["storage"],
   "host_permissions": [
     "https://discord.com/*",
-    "https://generativelanguage.googleapis.com/*",
-    "*://generativelanguage.googleapis.com/*"
+    "https://generativelanguage.googleapis.com/*"
   ],
   "background": {
     "service_worker": "background/background.js"
