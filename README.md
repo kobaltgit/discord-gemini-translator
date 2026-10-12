@@ -5,6 +5,7 @@
 </p>
 
 <p align="center">
+  <a href="https://chromewebstore.google.com/detail/discord-gemini-translator/mdpenbnmpnopmmlhlgnkgjgmcinkbook"><img src="https://img.shields.io/badge/Chrome_Web_Store-Available-brightgreen?logo=googlechrome&logoColor=white" alt="Chrome Web Store" /></a>
   <a href="https://developer.chrome.com/docs/extensions/develop"><img src="https://img.shields.io/badge/Chrome%20Extension-Manifest%20V3-blue?logo=googlechrome" alt="Manifest V3" /></a>
   <a href="https://ai.google.dev/"><img src="https://img.shields.io/badge/Google%20Gemini-API%20v1beta-4285F4?logo=google" alt="Gemini API" /></a>
   <a href="#-testing"><img src="https://img.shields.io/badge/tests-101%20passed-brightgreen?logo=node.js" alt="Tests: 101 passed" /></a>
